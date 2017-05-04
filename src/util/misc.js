@@ -498,12 +498,16 @@
         // using `new Function` for better introspection
         if (!proto[getterName]) {
           proto[getterName] = (function(property) {
-            return new Function('return this.get("' + property + '")');
+            //TODO: not needed when we move away from chrome extension (CSP fix)
+            return function() {return this.get(property)};
+            //return new Function('return this.get("' + property + '")');
           })(propName);
         }
         if (!proto[setterName]) {
           proto[setterName] = (function(property) {
-            return new Function('value', 'return this.set("' + property + '", value)');
+            //TODO: not needed when we move away from chrome extension (CSP fix)
+            return function(value) {return this.set(property, value)};
+            //return new Function('value', 'return this.set("' + property + '", value)');
           })(propName);
         }
       }
