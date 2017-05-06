@@ -327,6 +327,18 @@
           return;
         }
         var klass = fabric.util.getKlass(o.type, namespace);
+        if(!klass){
+          console.error("Failed to load implementation for " + o.type +", swapping out for invisible rectangle ");
+          o = {
+            width: 0,
+            fill: 'rgba(0,0,0,0)',
+            visible: false,
+            angle: 0,
+            height: 0,
+            type: 'rect',
+          };
+          klass = fabric.util.getKlass(o.type, namespace);
+        }
         klass.fromObject(o, function (obj, error) {
           error || (enlivenedObjects[index] = obj);
           reviver && reviver(o, obj, error);

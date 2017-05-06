@@ -82,7 +82,7 @@ To install Fabric.js using npm, you must first manually [install Cairo](http://c
 
 2. Build distribution file  **[~77K minified, ~20K gzipped]**
 
-        $ node build.js
+        $ node build.js modules=ALL exclude=json,gestures
 
     2.1 Or build a custom distribution file, by passing (comma separated) module names to be included.
 
