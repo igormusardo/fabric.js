@@ -305,30 +305,6 @@
     equal(firstObject.get('top'), initialTopValue, 'should restore initial top value');
   });
 
-  test('saveCoords', function() {
-    var group = makeGroupWith2Objects();
-
-    ok(typeof group.saveCoords == 'function');
-    equal(group.saveCoords(), group, 'should be chainable');
-  });
-
-  test('hasMoved', function() {
-    var group = makeGroupWith2Objects();
-
-    ok(typeof group.hasMoved == 'function');
-    equal(group.hasMoved(), false);
-
-    function moveBy10(value) {
-      return value + 10;
-    }
-    group.set('left', moveBy10);
-    equal(group.hasMoved(), true);
-    group.saveCoords();
-    equal(group.hasMoved(), false);
-    group.set('top', moveBy10);
-    equal(group.hasMoved(), true);
-  });
-
   test('setObjectCoords', function(){
     var group = makeGroupWith2Objects();
 
@@ -594,11 +570,33 @@
   test('group toDatalessObject', function() {
     var rect1 = new fabric.Rect({ top: 1, left: 1, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
         rect2 = new fabric.Rect({ top: 5, left: 5, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
-        pathGroup = new fabric.PathGroup([rect1, rect2], { sourcePath: 'sourcePath'}),
+        pathGroup = new fabric.Group([rect1, rect2], { sourcePath: 'sourcePath'}),
         group = new fabric.Group([pathGroup]),
         dataless = group.toDatalessObject();
 
-    equal(dataless.objects[0].paths, 'sourcePath', 'the paths have been changed with the sourcePath');
+    equal(dataless.objects[0].objects, 'sourcePath', 'the paths have been changed with the sourcePath');
+  });
+
+  test('group addWithUpdate', function() {
+    var rect1 = new fabric.Rect({ top: 1, left: 1, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
+        rect2 = new fabric.Rect({ top: 5, left: 5, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
+        group = new fabric.Group([rect1]);
+
+    var coords = group.oCoords;
+    group.addWithUpdate(rect2);
+    var newCoords = group.oCoords;
+    notEqual(coords, newCoords, 'object coords have been recalculated - add');
+  });
+
+  test('group removeWithUpdate', function() {
+    var rect1 = new fabric.Rect({ top: 1, left: 1, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
+        rect2 = new fabric.Rect({ top: 5, left: 5, width: 2, height: 2, strokeWidth: 0, fill: 'red', opacity: 1, objectCaching: false}),
+        group = new fabric.Group([rect1, rect2]);
+
+    var coords = group.oCoords;
+    group.removeWithUpdate(rect2);
+    var newCoords = group.oCoords;
+    notEqual(coords, newCoords, 'object coords have been recalculated - remove');
   });
 
   test('group willDrawShadow', function() {

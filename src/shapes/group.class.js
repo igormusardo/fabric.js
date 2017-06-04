@@ -86,26 +86,34 @@
       if (isAlreadyGrouped) {
         // do not change coordinate of objects enclosed in a group,
         // because objects coordinate system have been group coodinate system already.
-        this._updateObjectsCoords(true);
+        var object;
+        for (var i = this._objects.length; i--; ) {
+          object = this._objects[i];
+          object.__origHasControls = object.hasControls;
+          object.hasControls = false;
+        }
       }
       else {
-        this._calcBounds();
-        this._updateObjectsCoords();
+        var center = options && options.centerPoint;
+        // if coming from svg i do not want to calc bounds.
+        // i assume width and height are passed along options
+        center || this._calcBounds();
+        this._updateObjectsCoords(center);
+        delete options.centerPont;
         this.callSuper('initialize', options);
       }
 
       this.setCoords();
-      this.saveCoords();
     },
 
     /**
      * @private
      * @param {Boolean} [skipCoordsChange] if true, coordinates of objects enclosed in a group do not change
      */
-    _updateObjectsCoords: function(skipCoordsChange) {
-      var center = this.getCenterPoint();
+    _updateObjectsCoords: function(center) {
+      var center = center || this.getCenterPoint();
       for (var i = this._objects.length; i--; ){
-        this._updateObjectCoords(this._objects[i], center, skipCoordsChange);
+        this._updateObjectCoords(this._objects[i], center);
       }
     },
 
@@ -113,16 +121,11 @@
      * @private
      * @param {Object} object
      * @param {fabric.Point} center, current center of group.
-     * @param {Boolean} [skipCoordsChange] if true, coordinates of object dose not change
      */
-    _updateObjectCoords: function(object, center, skipCoordsChange) {
+    _updateObjectCoords: function(object, center) {
       // do not display corners of objects enclosed in a group
       object.__origHasControls = object.hasControls;
       object.hasControls = false;
-
-      if (skipCoordsChange) {
-        return;
-      }
 
       var objectLeft = object.getLeft(),
           objectTop = object.getTop(),
@@ -161,6 +164,7 @@
       this.forEachObject(this._setObjectActive, this);
       this._calcBounds();
       this._updateObjectsCoords();
+      this.setCoords();
       this.dirty = true;
       return this;
     },
@@ -188,6 +192,7 @@
       this.remove(object);
       this._calcBounds();
       this._updateObjectsCoords();
+      this.setCoords();
       this.dirty = true;
       return this;
     },
@@ -272,13 +277,19 @@
      * @return {Object} object representation of an instance
      */
     toDatalessObject: function(propertiesToInclude) {
-      var objsToObject = this.getObjects().map(function(obj) {
-        var originalDefaults = obj.includeDefaultValues;
-        obj.includeDefaultValues = obj.group.includeDefaultValues;
-        var _obj = obj.toDatalessObject(propertiesToInclude);
-        obj.includeDefaultValues = originalDefaults;
-        return _obj;
-      });
+      var objsToObject, sourcePath = this.sourcePath;
+      if (sourcePath) {
+        objsToObject = sourcePath;
+      }
+      else {
+        objsToObject = this.getObjects().map(function(obj) {
+          var originalDefaults = obj.includeDefaultValues;
+          obj.includeDefaultValues = obj.group.includeDefaultValues;
+          var _obj = obj.toDatalessObject(propertiesToInclude);
+          obj.includeDefaultValues = originalDefaults;
+          return _obj;
+        });
+      }
       return extend(this.callSuper('toDatalessObject', propertiesToInclude), {
         objects: objsToObject
       });
@@ -343,7 +354,6 @@
     /**
      * Execute the drawing operation for an object on a specified context
      * @param {CanvasRenderingContext2D} ctx Context to render on
-     * @param {Boolean} [noTransform] When true, context is not transformed
      */
     drawObject: function(ctx) {
       for (var i = 0, len = this._objects.length; i < len; i++) {
@@ -374,15 +384,16 @@
     /**
      * Renders controls and borders for the object
      * @param {CanvasRenderingContext2D} ctx Context to render on
-     * @param {Boolean} [noTransform] When true, context is not transformed
+     * @param {Object} [styleOverride] properties to override the object style
+     * @param {Object} [childrenOverride] properties to override the children overrides
      */
-    _renderControls: function(ctx, noTransform) {
+    _renderControls: function(ctx, styleOverride, childrenOverride) {
       ctx.save();
       ctx.globalAlpha = this.isMoving ? this.borderOpacityWhenMoving : 1;
-      this.callSuper('_renderControls', ctx, noTransform);
+      this.callSuper('_renderControls', ctx, styleOverride);
       if (this.canvas && this === this.canvas.getActiveGroup()) {
         for (var i = 0, len = this._objects.length; i < len; i++) {
-          this._objects[i]._renderControls(ctx);
+          this._objects[i]._renderControls(ctx, childrenOverride);
         }
       }
       ctx.restore();
@@ -461,27 +472,6 @@
      */
     destroy: function() {
       return this._restoreObjectsState();
-    },
-
-    /**
-     * Saves coordinates of this instance (to be used together with `hasMoved`)
-     * @saveCoords
-     * @return {fabric.Group} thisArg
-     * @chainable
-     */
-    saveCoords: function() {
-      this._originalLeft = this.get('left');
-      this._originalTop = this.get('top');
-      return this;
-    },
-
-    /**
-     * Checks whether this group was moved (since `saveCoords` was called last)
-     * @return {Boolean} true if an object was moved (since fabric.Group#saveCoords was called)
-     */
-    hasMoved: function() {
-      return this._originalLeft !== this.get('left') ||
-             this._originalTop !== this.get('top');
     },
 
     /**
