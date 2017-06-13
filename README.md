@@ -1,3 +1,5 @@
+node build.js modules=ALL exclude=json,gestures
+
 ### Fabric
 
 <!-- chat, support -->
