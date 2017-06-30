@@ -63,6 +63,31 @@ fabric.reNum = '(?:[-+]?(?:\\d+|\\d*\\.\\d+)(?:e[-+]?\\d+)?)';
 fabric.fontPaths = { };
 fabric.iMatrix = [1, 0, 0, 1, 0, 0];
 fabric.canvasModule = 'canvas';
+
+/**
+ * Pixel limit for cache canvases. 1Mpx , 4Mpx should be fine.
+ * @since 1.7.14
+ * @type Number
+ * @default
+ */
+fabric.perfLimitSizeTotal = 2097152;
+
+/**
+ * Pixel limit for cache canvases width or height. IE fixes the maximum at 5000
+ * @since 1.7.14
+ * @type Number
+ * @default
+ */
+fabric.maxCacheSideLimit = 4096;
+
+/**
+ * Lowest pixel limit for cache canvases, set at 256PX
+ * @since 1.7.14
+ * @type Number
+ * @default
+ */
+fabric.minCacheSideLimit = 256;
+
 /**
  * Cache Object for widths of chars in text rendering.
  */
@@ -1217,6 +1242,25 @@ fabric.CommonMethods = {
       else if (fabric.charWidthsCache[fontFamily]) {
         delete fabric.charWidthsCache[fontFamily];
       }
+    },
+
+    /**
+     * Clear char widths cache for a font family.
+     * @memberOf fabric.util
+     * @param {Number} ar aspect ratio
+     * @param {Number} maximumArea Maximum area you want to achieve
+     * @param {Number} maximumSide biggest side allowed
+     * @return {Object.x} Limited dimensions by X
+     * @return {Object.y} Limited dimensions by Y
+     */
+    limitDimsByArea: function(ar, maximumArea) {
+      var roughWidth = Math.sqrt(maximumArea * ar),
+          perfLimitSizeY = Math.floor(maximumArea / roughWidth);
+      return { x: Math.floor(roughWidth), y: perfLimitSizeY };
+    },
+
+    capValue: function(min, value, max) {
+      return Math.max(min, Math.min(value, max));
     }
   };
 
@@ -3749,7 +3793,7 @@ if (typeof console !== 'undefined') {
     // Precedence of rules:   style > class > attribute
     fabric.parseElements(elements, function(instances, elements) {
       if (callback) {
-        callback(instances, options, elements);
+        callback(instances, options, elements, descendants);
       }
     }, clone(options), reviver, parsingOptions);
   };
@@ -4054,8 +4098,8 @@ if (typeof console !== 'undefined') {
           callback && callback(null);
         }
 
-        fabric.parseSVGDocument(xml.documentElement, function (results, _options, elements) {
-          callback && callback(results, _options, elements);
+        fabric.parseSVGDocument(xml.documentElement, function (results, _options, elements, allElements) {
+          callback && callback(results, _options, elements, allElements);
         }, reviver, options);
       }
     },
@@ -4085,8 +4129,8 @@ if (typeof console !== 'undefined') {
         doc.loadXML(string.replace(/<!DOCTYPE[\s\S]*?(\[[\s\S]*\])*?>/i, ''));
       }
 
-      fabric.parseSVGDocument(doc.documentElement, function (results, _options, elements) {
-        callback(results, _options, elements);
+      fabric.parseSVGDocument(doc.documentElement, function (results, _options, elements, allElements) {
+        callback(results, _options, elements, allElements);
       }, reviver, options);
     }
   });
@@ -4971,7 +5015,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
    * @memberOf fabric.Color
    */
    // eslint-disable-next-line max-len
-  fabric.Color.reRGBa = /^rgba?\(\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*(?:\s*,\s*(\d+(?:\.\d+)?)\s*)?\)$/;
+  fabric.Color.reRGBa = /^rgba?\(\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*(?:\s*,\s*((?:\d*\.?\d+)?)\s*)?\)$/;
 
   /**
    * Regex matching color in HSL or HSLA formats (ex: hsl(200, 80%, 10%), hsla(300, 50%, 80%, 0.5), hsla( 300 , 50% , 80% , 0.5 ))
@@ -11395,11 +11439,19 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
       ? JSON.parse(json)
       : fabric.util.object.clone(json);
 
-    this.clear();
+    var _this = this,
+        renderOnAddRemove = this.renderOnAddRemove;
+    this.renderOnAddRemove = false;
 
-    var _this = this;
-    this._enlivenObjects(serialized.objects, function () {
+    this._enlivenObjects(serialized.objects, function (enlivenedObjects) {
+      _this.clear();
       _this._setBgOverlay(serialized, function () {
+        enlivenedObjects.forEach(function(obj, index) {
+          // we splice the array just in case some custom classes restored from JSON
+          // will add more object to canvas at canvas init.
+          _this.insertAt(obj, index);
+        });
+        _this.renderOnAddRemove = renderOnAddRemove;
         // remove parts i cannot set as options
         delete serialized.objects;
         delete serialized.backgroundImage;
@@ -11411,6 +11463,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
         // create the Object instance. Here the Canvas is
         // already an instance and we are just loading things over it
         _this._setOptions(serialized);
+        _this.renderAll();
         callback && callback();
       });
     }, reviver);
@@ -11423,13 +11476,12 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
    * @param {Function} callback Invoked after all background and overlay images/patterns loaded
    */
   _setBgOverlay: function(serialized, callback) {
-    var _this = this,
-        loaded = {
-          backgroundColor: false,
-          overlayColor: false,
-          backgroundImage: false,
-          overlayImage: false
-        };
+    var loaded = {
+      backgroundColor: false,
+      overlayColor: false,
+      backgroundImage: false,
+      overlayImage: false
+    };
 
     if (!serialized.backgroundImage && !serialized.overlayImage && !serialized.background && !serialized.overlay) {
       callback && callback();
@@ -11438,7 +11490,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
 
     var cbIfLoaded = function () {
       if (loaded.backgroundImage && loaded.overlayImage && loaded.backgroundColor && loaded.overlayColor) {
-        _this.renderAll();
         callback && callback();
       }
     };
@@ -11487,25 +11538,13 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
    * @param {Function} [reviver]
    */
   _enlivenObjects: function (objects, callback, reviver) {
-    var _this = this;
-
     if (!objects || objects.length === 0) {
-      callback && callback();
+      callback && callback([]);
       return;
     }
 
-    var renderOnAddRemove = this.renderOnAddRemove;
-    this.renderOnAddRemove = false;
-
     fabric.util.enlivenObjects(objects, function(enlivenedObjects) {
-      enlivenedObjects.forEach(function(obj, index) {
-        // we splice the array just in case some custom classes restored from JSON
-        // will add more object to canvas at canvas init.
-        _this.insertAt(obj, index);
-      });
-
-      _this.renderOnAddRemove = renderOnAddRemove;
-      callback && callback();
+      callback && callback(enlivenedObjects);
     }, null, reviver);
   },
 
@@ -11586,7 +11625,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
       capitalize = fabric.util.string.capitalize,
       degreesToRadians = fabric.util.degreesToRadians,
       supportsLineDash = fabric.StaticCanvas.supports('setLineDash'),
-      objectCaching = !fabric.isLikelyNode;
+      objectCaching = !fabric.isLikelyNode,
+      ALIASING_LIMIT = 2;
 
   if (fabric.Object) {
     return;
@@ -12383,8 +12423,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
     stateProperties: (
       'top left width height scaleX scaleY flipX flipY originX originY transformMatrix ' +
       'stroke strokeWidth strokeDashArray strokeLineCap strokeLineJoin strokeMiterLimit ' +
-      'angle opacity fill fillRule globalCompositeOperation shadow clipTo visible backgroundColor ' +
-      'skewX skewY'
+      'angle opacity fill globalCompositeOperation shadow clipTo visible backgroundColor ' +
+      'skewX skewY fillRule'
     ).split(' '),
 
     /**
@@ -12392,8 +12432,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      * @type Array
      */
     cacheProperties: (
-      'fill stroke strokeWidth strokeDashArray width height stroke strokeWidth strokeDashArray' +
-      ' strokeLineCap strokeLineJoin strokeMiterLimit fillRule backgroundColor'
+      'fill stroke strokeWidth strokeDashArray width height' +
+      ' strokeLineCap strokeLineJoin strokeMiterLimit backgroundColor'
     ).split(' '),
 
     /**
@@ -12419,6 +12459,46 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
     },
 
     /**
+     * Limit the cache dimensions so that X * Y do not cross fabric.perfLimitSizeTotal
+     * and each side do not cross fabric.cacheSideLimit
+     * those numbers are configurable so that you can get as much detail as you want
+     * making bargain with performances.
+     * @param {Object} dims
+     * @param {Object} dims.width width of canvas
+     * @param {Object} dims.height height of canvas
+     * @param {Object} dims.zoomX zoomX zoom value to unscale the canvas before drawing cache
+     * @param {Object} dims.zoomY zoomY zoom value to unscale the canvas before drawing cache
+     * @return {Object}.width width of canvas
+     * @return {Object}.height height of canvas
+     * @return {Object}.zoomX zoomX zoom value to unscale the canvas before drawing cache
+     * @return {Object}.zoomY zoomY zoom value to unscale the canvas before drawing cache
+     */
+    _limitCacheSize: function(dims) {
+      var perfLimitSizeTotal = fabric.perfLimitSizeTotal,
+          maximumSide = fabric.cacheSideLimit,
+          width = dims.width, height = dims.height,
+          ar = width / height, limitedDims = fabric.util.limitDimsByArea(ar, perfLimitSizeTotal, maximumSide),
+          capValue = fabric.util.capValue, max = fabric.maxCacheSideLimit, min = fabric.minCacheSideLimit,
+          x = capValue(min, limitedDims.x, max),
+          y = capValue(min, limitedDims.y, max);
+      if (width > x) {
+        dims.zoomX /= width / x;
+        dims.width = x;
+      }
+      else if (width < min) {
+        dims.width = min;
+      }
+      if (height > y) {
+        dims.zoomY /= height / y;
+        dims.height = y;
+      }
+      else if (height < min) {
+        dims.height = min;
+      }
+      return dims;
+    },
+
+    /**
      * Return the dimension and the zoom level needed to create a cache canvas
      * big enough to host the object to be cached.
      * @private
@@ -12437,8 +12517,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
           width = dim.x * zoomX,
           height = dim.y * zoomY;
       return {
-        width: width + 2,
-        height: height + 2,
+        width: width + ALIASING_LIMIT,
+        height: height + ALIASING_LIMIT,
         zoomX: zoomX,
         zoomY: zoomY
       };
@@ -12457,17 +12537,41 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
           return false;
         }
       }
-      var dims = this._getCacheCanvasDimensions(),
+      var dims = this._limitCacheSize(this._getCacheCanvasDimensions()),
+          minCacheSize = fabric.minCacheSideLimit,
           width = dims.width, height = dims.height,
-          zoomX = dims.zoomX, zoomY = dims.zoomY;
-
-      if (width !== this.cacheWidth || height !== this.cacheHeight) {
-        this._cacheCanvas.width = Math.ceil(width);
-        this._cacheCanvas.height = Math.ceil(height);
-        this._cacheContext.translate(width / 2, height / 2);
+          zoomX = dims.zoomX, zoomY = dims.zoomY,
+          dimensionsChanged = width !== this.cacheWidth || height !== this.cacheHeight,
+          zoomChanged = this.zoomX !== zoomX || this.zoomY !== zoomY,
+          shouldRedraw = dimensionsChanged || zoomChanged,
+          additionalWidth = 0, additionalHeight = 0, shouldResizeCanvas = false;
+      if (dimensionsChanged) {
+        var canvasWidth = this._cacheCanvas.width,
+            canvasHeight = this._cacheCanvas.height,
+            sizeGrowing = width > canvasWidth || height > canvasHeight,
+            sizeShrinking = (width < canvasWidth * 0.9 || height < canvasHeight * 0.9) &&
+              canvasWidth > minCacheSize && canvasHeight > minCacheSize;
+        shouldResizeCanvas = sizeGrowing || sizeShrinking;
+        if (sizeGrowing) {
+          additionalWidth = (width * 0.1) & ~1;
+          additionalHeight = (height * 0.1) & ~1;
+        }
+      }
+      if (shouldRedraw) {
+        if (shouldResizeCanvas) {
+          this._cacheCanvas.width = Math.max(Math.ceil(width) + additionalWidth, minCacheSize);
+          this._cacheCanvas.height = Math.max(Math.ceil(height) + additionalHeight, minCacheSize);
+          this.cacheWidth = width;
+          this.cacheHeight = height;
+          this.cacheTranslationX = (width + additionalWidth) / 2;
+          this.cacheTranslationY = (height + additionalHeight) / 2;
+        }
+        else {
+          this._cacheContext.setTransform(1, 0, 0, 1, 0, 0);
+          this._cacheContext.clearRect(0, 0, this._cacheCanvas.width, this._cacheCanvas.height);
+        }
+        this._cacheContext.translate(this.cacheTranslationX, this.cacheTranslationY);
         this._cacheContext.scale(zoomX, zoomY);
-        this.cacheWidth = width;
-        this.cacheHeight = height;
         this.zoomX = zoomX;
         this.zoomY = zoomY;
         return true;
@@ -12660,7 +12764,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
         this.dirty = true;
       }
 
-      if (this.group && this.stateProperties.indexOf(key) > -1) {
+      if (this.group && this.stateProperties.indexOf(key) > -1 && this.group.isOnACache()) {
         this.group.set('dirty', true);
       }
 
@@ -12685,7 +12789,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      * Retrieves viewportTransform from Object's canvas if possible
      * @method getViewportTransform
      * @memberOf fabric.Object.prototype
-     * @return {Boolean} flipY value // TODO
+     * @return {Boolean}
      */
     getViewportTransform: function() {
       if (this.canvas && this.canvas.viewportTransform) {
@@ -12694,20 +12798,29 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
       return fabric.iMatrix.concat();
     },
 
+    /*
+     * @private
+     * return if the object would be visible in rendering
+     * @memberOf fabric.Object.prototype
+     * @return {Boolean}
+     */
+    isNotVisible: function() {
+      return this.opacity === 0 || (this.width === 0 && this.height === 0) || !this.visible;
+    },
+
     /**
      * Renders an object on a specified context
      * @param {CanvasRenderingContext2D} ctx Context to render on
      */
     render: function(ctx) {
       // do not render if width/height are zeros or object is not visible
-      if ((this.width === 0 && this.height === 0) || !this.visible) {
+      if (this.isNotVisible()) {
         return;
       }
       if (this.canvas && this.canvas.skipOffscreen && !this.group && !this.isOnScreen()) {
         return;
       }
       ctx.save();
-      //setup fill rule for current object
       this._setupCompositeOperation(ctx);
       this.drawSelectionBackground(ctx);
       this.transform(ctx);
@@ -12729,6 +12842,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
         this.drawCacheOnCanvas(ctx);
       }
       else {
+        this.dirty = false;
         this.drawObject(ctx);
         if (this.objectCaching && this.statefullCache) {
           this.saveState({ propertySet: 'cacheProperties' });
@@ -12751,7 +12865,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
     },
 
     /**
-     * Decide if the object should cache or not.
+     * Decide if the object should cache or not. Create its own cache level
      * objectCaching is a global flag, wins over everything
      * needsItsOwnCache should be used when the object drawing method requires
      * a cache step. None of the fabric classes requires it.
@@ -12759,8 +12873,9 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      * @return {Boolean}
      */
     shouldCache: function() {
-      return this.objectCaching &&
-      (!this.group || this.needsItsOwnCache() || !this.group.isCaching());
+      this.ownCaching = this.objectCaching &&
+      (!this.group || this.needsItsOwnCache() || !this.group.isOnACache());
+      return this.ownCaching;
     },
 
     /**
@@ -12789,7 +12904,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      */
     drawCacheOnCanvas: function(ctx) {
       ctx.scale(1 / this.zoomX, 1 / this.zoomY);
-      ctx.drawImage(this._cacheCanvas, -this.cacheWidth / 2, -this.cacheHeight / 2);
+      ctx.drawImage(this._cacheCanvas, -this.cacheTranslationX, -this.cacheTranslationY);
     },
 
     /**
@@ -12798,13 +12913,16 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      * on parent canvas.
      */
     isCacheDirty: function(skipCanvas) {
-      if (!skipCanvas && this._updateCacheCanvas()) {
+      if (this.isNotVisible()) {
+        return false;
+      }
+      if (this._cacheCanvas && !skipCanvas && this._updateCacheCanvas()) {
         // in this case the context is already cleared.
         return true;
       }
       else {
         if (this.dirty || (this.statefullCache && this.hasStateChanged('cacheProperties'))) {
-          if (!skipCanvas) {
+          if (this._cacheCanvas && !skipCanvas) {
             var width = this.cacheWidth / this.zoomX;
             var height = this.cacheHeight / this.zoomY;
             this._cacheContext.clearRect(-width / 2, -height / 2, width, height);
@@ -14594,34 +14712,33 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
   }
 
   function _isEqual(origValue, currentValue, firstPass) {
-    if (!fabric.isLikelyNode && origValue instanceof Element) {
-      // avoid checking deep html elements
-      return origValue === currentValue;
+    if (origValue === currentValue) {
+      // if the objects are identical, return
+      return true;
     }
-    else if (origValue instanceof Array) {
+    else if (Array.isArray(origValue)) {
       if (origValue.length !== currentValue.length) {
         return false;
       }
       for (var i = 0, len = origValue.length; i < len; i++) {
-        if (origValue[i] !== currentValue[i]) {
+        if (!_isEqual(origValue[i], currentValue[i])) {
           return false;
         }
       }
       return true;
     }
     else if (origValue && typeof origValue === 'object') {
-      if (!firstPass && Object.keys(origValue).length !== Object.keys(currentValue).length) {
+      var keys = Object.keys(origValue), key;
+      if (!firstPass && keys.length !== Object.keys(currentValue).length) {
         return false;
       }
-      for (var key in origValue) {
+      for (var i = 0, len = keys.length; i < len; i++) {
+        key = keys[i];
         if (!_isEqual(origValue[key], currentValue[key])) {
           return false;
         }
       }
       return true;
-    }
-    else {
-      return origValue === currentValue;
     }
   }
 
@@ -14635,11 +14752,11 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
      */
     hasStateChanged: function(propertySet) {
       propertySet = propertySet || originalSet;
-      propertySet = '_' + propertySet;
-      if (!Object.keys(this[propertySet]).length) {
+      var dashedPropertySet = '_' + propertySet;
+      if (Object.keys(this[dashedPropertySet]).length < this[propertySet].length) {
         return true;
       }
-      return !_isEqual(this[propertySet], this, true);
+      return !_isEqual(this[dashedPropertySet], this, true);
     },
 
     /**
@@ -16810,8 +16927,11 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
     return;
   }
 
+  var stateProperties = fabric.Object.prototype.stateProperties.concat();
+  stateProperties.push('path');
+
   var cacheProperties = fabric.Object.prototype.cacheProperties.concat();
-  cacheProperties.push('path');
+  cacheProperties.push('path', 'fillRule');
 
   /**
    * Path class
@@ -16852,6 +16972,8 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
 
     cacheProperties: cacheProperties,
 
+    stateProperties: stateProperties,
+
     /**
      * Constructor
      * @param {Array|String} path Path data (sequence of coordinates and corresponding "command" tokens)
@@ -16860,10 +16982,7 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
      */
     initialize: function(path, options) {
       options = options || { };
-
-      if (options) {
-        this.setOptions(options);
-      }
+      this.callSuper('initialize', options);
 
       if (!path) {
         path = [];
@@ -17795,6 +17914,13 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
     subTargetCheck: false,
 
     /**
+     * Groups are container, do not render anything on theyr own, ence no cache properties
+     * @type Boolean
+     * @default
+     */
+    cacheProperties: [],
+
+    /**
      * Constructor
      * @param {Object} objects Group objects
      * @param {Object} [options] Options object
@@ -18046,7 +18172,7 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
     },
 
     /**
-     * Decide if the object should cache or not.
+     * Decide if the object should cache or not. Create its own cache level
      * objectCaching is a global flag, wins over everything
      * needsItsOwnCache should be used when the object drawing method requires
      * a cache step. None of the fabric classes requires it.
@@ -18054,17 +18180,17 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
      * @return {Boolean}
      */
     shouldCache: function() {
-      var parentCache = this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isCaching());
-      this.caching = parentCache;
-      if (parentCache) {
+      var ownCache = this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isOnACache());
+      this.ownCaching = ownCache;
+      if (ownCache) {
         for (var i = 0, len = this._objects.length; i < len; i++) {
           if (this._objects[i].willDrawShadow()) {
-            this.caching = false;
+            this.ownCaching = false;
             return false;
           }
         }
       }
-      return parentCache;
+      return ownCache;
     },
 
     /**
@@ -18087,8 +18213,8 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
      * Check if this group or its parent group are caching, recursively up
      * @return {Boolean}
      */
-    isCaching: function() {
-      return this.caching || this.group && this.group.isCaching();
+    isOnACache: function() {
+      return this.ownCaching || (this.group && this.group.isOnACache());
     },
 
     /**
@@ -18113,8 +18239,11 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
       }
       for (var i = 0, len = this._objects.length; i < len; i++) {
         if (this._objects[i].isCacheDirty(true)) {
-          var dim = this._getNonTransformedDimensions();
-          this._cacheContext.clearRect(-dim.x / 2, -dim.y / 2, dim.x, dim.y);
+          if (this._cacheCanvas) {
+            // if this group has not a cache canvas there is nothing to clean
+            var x = this.cacheWidth / this.zoomX, y = this.cacheHeight / this.zoomY;
+            this._cacheContext.clearRect(-x / 2, -y / 2, x, y);
+          }
           return true;
         }
       }
@@ -18143,11 +18272,6 @@ fabric.util.object.extend(fabric.Object.prototype, /** @lends fabric.Object.prot
      * @private
      */
     _renderObject: function(object, ctx) {
-      // do not render if object is not visible
-      if (!object.visible) {
-        return;
-      }
-
       var originalHasRotatingPoint = object.hasRotatingPoint;
       object.hasRotatingPoint = false;
       object.render(ctx);
@@ -19609,8 +19733,8 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass(/** @lends fabric.Imag
 
     var attributeLocations = this.getAttributeLocations(gl, program);
     var uniformLocations = this.getUniformLocations(gl, program) || { };
-    uniformLocations.uWidth = gl.getUniformLocation(program, 'uWidth');
-    uniformLocations.uHeight = gl.getUniformLocation(program, 'uHeight');
+    uniformLocations.uStepW = gl.getUniformLocation(program, 'uStepW');
+    uniformLocations.uStepH = gl.getUniformLocation(program, 'uStepH');
     return {
       program: program,
       attributeLocations: attributeLocations,
@@ -20758,7 +20882,7 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
      */
     fragmentSource: 'precision highp float;\n' +
       'uniform sampler2D uTexture;\n' +
-      'uniform float uHeight;\n' +
+      'uniform float uStepH;\n' +
       'uniform float uNoise;\n' +
       'uniform float uSeed;\n' +
       'varying vec2 vTexCoord;\n' +
@@ -20767,7 +20891,7 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
       '}\n' +
       'void main() {\n' +
         'vec4 color = texture2D(uTexture, vTexCoord);\n' +
-        'color.rgb += (0.5 - rand(vTexCoord, uSeed, uHeight / 10.0)) * uNoise;\n' +
+        'color.rgb += (0.5 - rand(vTexCoord, uSeed, 0.1 / uStepH)) * uNoise;\n' +
         'gl_FragColor = color;\n' +
       '}',
 
@@ -20963,8 +21087,8 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
     getUniformLocations: function(gl, program) {
       return {
         uBlocksize: gl.getUniformLocation(program, 'uBlocksize'),
-        uWidth: gl.getUniformLocation(program, 'uWidth'),
-        uHeight: gl.getUniformLocation(program, 'uHeight'),
+        uStepW: gl.getUniformLocation(program, 'uStepW'),
+        uStepH: gl.getUniformLocation(program, 'uStepH'),
       };
     },
 
@@ -25870,6 +25994,7 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
     this.hiddenTextarea.setAttribute('autocorrect', 'off');
     this.hiddenTextarea.setAttribute('autocomplete', 'off');
     this.hiddenTextarea.setAttribute('spellcheck', 'false');
+    this.hiddenTextarea.setAttribute('data-fabric-hiddentextarea', '');
 
     var style = this._calcTextareaPosition();
     this.hiddenTextarea.style.cssText = 'white-space: nowrap; position: absolute; top: ' + style.top +

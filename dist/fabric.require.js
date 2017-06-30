@@ -35,6 +35,12 @@ fabric.iMatrix = [ 1, 0, 0, 1, 0, 0 ];
 
 fabric.canvasModule = "canvas";
 
+fabric.perfLimitSizeTotal = 2097152;
+
+fabric.maxCacheSideLimit = 4096;
+
+fabric.minCacheSideLimit = 256;
+
 fabric.charWidthsCache = {};
 
 fabric.textureSize = 2048;
@@ -603,6 +609,16 @@ fabric.CommonMethods = {
             } else if (fabric.charWidthsCache[fontFamily]) {
                 delete fabric.charWidthsCache[fontFamily];
             }
+        },
+        limitDimsByArea: function(ar, maximumArea) {
+            var roughWidth = Math.sqrt(maximumArea * ar), perfLimitSizeY = Math.floor(maximumArea / roughWidth);
+            return {
+                x: Math.floor(roughWidth),
+                y: perfLimitSizeY
+            };
+        },
+        capValue: function(min, value, max) {
+            return Math.max(min, Math.min(value, max));
         }
     };
 })(typeof exports !== "undefined" ? exports : this);
@@ -2076,7 +2092,7 @@ if (typeof console !== "undefined") {
         fabric.cssRules[svgUid] = fabric.getCSSRules(doc);
         fabric.parseElements(elements, function(instances, elements) {
             if (callback) {
-                callback(instances, options, elements);
+                callback(instances, options, elements, descendants);
             }
         }, clone(options), reviver, parsingOptions);
     };
@@ -2239,8 +2255,8 @@ if (typeof console !== "undefined") {
                 if (!xml || !xml.documentElement) {
                     callback && callback(null);
                 }
-                fabric.parseSVGDocument(xml.documentElement, function(results, _options, elements) {
-                    callback && callback(results, _options, elements);
+                fabric.parseSVGDocument(xml.documentElement, function(results, _options, elements, allElements) {
+                    callback && callback(results, _options, elements, allElements);
                 }, reviver, options);
             }
         },
@@ -2257,8 +2273,8 @@ if (typeof console !== "undefined") {
                 doc.async = "false";
                 doc.loadXML(string.replace(/<!DOCTYPE[\s\S]*?(\[[\s\S]*\])*?>/i, ""));
             }
-            fabric.parseSVGDocument(doc.documentElement, function(results, _options, elements) {
-                callback(results, _options, elements);
+            fabric.parseSVGDocument(doc.documentElement, function(results, _options, elements, allElements) {
+                callback(results, _options, elements, allElements);
             }, reviver, options);
         }
     });
@@ -2691,7 +2707,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
             return this;
         }
     };
-    fabric.Color.reRGBa = /^rgba?\(\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*(?:\s*,\s*(\d+(?:\.\d+)?)\s*)?\)$/;
+    fabric.Color.reRGBa = /^rgba?\(\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*,\s*(\d{1,3}(?:\.\d+)?\%?)\s*(?:\s*,\s*((?:\d*\.?\d+)?)\s*)?\)$/;
     fabric.Color.reHSLa = /^hsla?\(\s*(\d{1,3})\s*,\s*(\d{1,3}\%)\s*,\s*(\d{1,3}\%)\s*(?:\s*,\s*(\d+(?:\.\d+)?)\s*)?\)$/;
     fabric.Color.reHex = /^#?([0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{4}|[0-9a-f]{3})$/i;
     fabric.Color.colorNameMap = {
@@ -5817,23 +5833,29 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             return;
         }
         var serialized = typeof json === "string" ? JSON.parse(json) : fabric.util.object.clone(json);
-        this.clear();
-        var _this = this;
-        this._enlivenObjects(serialized.objects, function() {
+        var _this = this, renderOnAddRemove = this.renderOnAddRemove;
+        this.renderOnAddRemove = false;
+        this._enlivenObjects(serialized.objects, function(enlivenedObjects) {
+            _this.clear();
             _this._setBgOverlay(serialized, function() {
+                enlivenedObjects.forEach(function(obj, index) {
+                    _this.insertAt(obj, index);
+                });
+                _this.renderOnAddRemove = renderOnAddRemove;
                 delete serialized.objects;
                 delete serialized.backgroundImage;
                 delete serialized.overlayImage;
                 delete serialized.background;
                 delete serialized.overlay;
                 _this._setOptions(serialized);
+                _this.renderAll();
                 callback && callback();
             });
         }, reviver);
         return this;
     },
     _setBgOverlay: function(serialized, callback) {
-        var _this = this, loaded = {
+        var loaded = {
             backgroundColor: false,
             overlayColor: false,
             backgroundImage: false,
@@ -5845,7 +5867,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
         }
         var cbIfLoaded = function() {
             if (loaded.backgroundImage && loaded.overlayImage && loaded.backgroundColor && loaded.overlayColor) {
-                _this.renderAll();
                 callback && callback();
             }
         };
@@ -5875,19 +5896,12 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
         }
     },
     _enlivenObjects: function(objects, callback, reviver) {
-        var _this = this;
         if (!objects || objects.length === 0) {
-            callback && callback();
+            callback && callback([]);
             return;
         }
-        var renderOnAddRemove = this.renderOnAddRemove;
-        this.renderOnAddRemove = false;
         fabric.util.enlivenObjects(objects, function(enlivenedObjects) {
-            enlivenedObjects.forEach(function(obj, index) {
-                _this.insertAt(obj, index);
-            });
-            _this.renderOnAddRemove = renderOnAddRemove;
-            callback && callback();
+            callback && callback(enlivenedObjects);
         }, null, reviver);
     },
     _toDataURL: function(format, callback) {
@@ -5929,7 +5943,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
 
 (function(global) {
     "use strict";
-    var fabric = global.fabric || (global.fabric = {}), extend = fabric.util.object.extend, clone = fabric.util.object.clone, toFixed = fabric.util.toFixed, capitalize = fabric.util.string.capitalize, degreesToRadians = fabric.util.degreesToRadians, supportsLineDash = fabric.StaticCanvas.supports("setLineDash"), objectCaching = !fabric.isLikelyNode;
+    var fabric = global.fabric || (global.fabric = {}), extend = fabric.util.object.extend, clone = fabric.util.object.clone, toFixed = fabric.util.toFixed, capitalize = fabric.util.string.capitalize, degreesToRadians = fabric.util.degreesToRadians, supportsLineDash = fabric.StaticCanvas.supports("setLineDash"), objectCaching = !fabric.isLikelyNode, ALIASING_LIMIT = 2;
     if (fabric.Object) {
         return;
     }
@@ -6002,8 +6016,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
         statefullCache: false,
         noScaleCache: true,
         dirty: true,
-        stateProperties: ("top left width height scaleX scaleY flipX flipY originX originY transformMatrix " + "stroke strokeWidth strokeDashArray strokeLineCap strokeLineJoin strokeMiterLimit " + "angle opacity fill fillRule globalCompositeOperation shadow clipTo visible backgroundColor " + "skewX skewY").split(" "),
-        cacheProperties: ("fill stroke strokeWidth strokeDashArray width height stroke strokeWidth strokeDashArray" + " strokeLineCap strokeLineJoin strokeMiterLimit fillRule backgroundColor").split(" "),
+        stateProperties: ("top left width height scaleX scaleY flipX flipY originX originY transformMatrix " + "stroke strokeWidth strokeDashArray strokeLineCap strokeLineJoin strokeMiterLimit " + "angle opacity fill globalCompositeOperation shadow clipTo visible backgroundColor " + "skewX skewY fillRule").split(" "),
+        cacheProperties: ("fill stroke strokeWidth strokeDashArray width height" + " strokeLineCap strokeLineJoin strokeMiterLimit backgroundColor").split(" "),
         initialize: function(options) {
             options = options || {};
             if (options) {
@@ -6016,11 +6030,27 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             this._cacheContext = this._cacheCanvas.getContext("2d");
             this._updateCacheCanvas();
         },
+        _limitCacheSize: function(dims) {
+            var perfLimitSizeTotal = fabric.perfLimitSizeTotal, maximumSide = fabric.cacheSideLimit, width = dims.width, height = dims.height, ar = width / height, limitedDims = fabric.util.limitDimsByArea(ar, perfLimitSizeTotal, maximumSide), capValue = fabric.util.capValue, max = fabric.maxCacheSideLimit, min = fabric.minCacheSideLimit, x = capValue(min, limitedDims.x, max), y = capValue(min, limitedDims.y, max);
+            if (width > x) {
+                dims.zoomX /= width / x;
+                dims.width = x;
+            } else if (width < min) {
+                dims.width = min;
+            }
+            if (height > y) {
+                dims.zoomY /= height / y;
+                dims.height = y;
+            } else if (height < min) {
+                dims.height = min;
+            }
+            return dims;
+        },
         _getCacheCanvasDimensions: function() {
             var zoom = this.canvas && this.canvas.getZoom() || 1, objectScale = this.getObjectScaling(), dim = this._getNonTransformedDimensions(), retina = this.canvas && this.canvas._isRetinaScaling() ? fabric.devicePixelRatio : 1, zoomX = objectScale.scaleX * zoom * retina, zoomY = objectScale.scaleY * zoom * retina, width = dim.x * zoomX, height = dim.y * zoomY;
             return {
-                width: width + 2,
-                height: height + 2,
+                width: width + ALIASING_LIMIT,
+                height: height + ALIASING_LIMIT,
                 zoomX: zoomX,
                 zoomY: zoomY
             };
@@ -6032,14 +6062,29 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
                     return false;
                 }
             }
-            var dims = this._getCacheCanvasDimensions(), width = dims.width, height = dims.height, zoomX = dims.zoomX, zoomY = dims.zoomY;
-            if (width !== this.cacheWidth || height !== this.cacheHeight) {
-                this._cacheCanvas.width = Math.ceil(width);
-                this._cacheCanvas.height = Math.ceil(height);
-                this._cacheContext.translate(width / 2, height / 2);
+            var dims = this._limitCacheSize(this._getCacheCanvasDimensions()), minCacheSize = fabric.minCacheSideLimit, width = dims.width, height = dims.height, zoomX = dims.zoomX, zoomY = dims.zoomY, dimensionsChanged = width !== this.cacheWidth || height !== this.cacheHeight, zoomChanged = this.zoomX !== zoomX || this.zoomY !== zoomY, shouldRedraw = dimensionsChanged || zoomChanged, additionalWidth = 0, additionalHeight = 0, shouldResizeCanvas = false;
+            if (dimensionsChanged) {
+                var canvasWidth = this._cacheCanvas.width, canvasHeight = this._cacheCanvas.height, sizeGrowing = width > canvasWidth || height > canvasHeight, sizeShrinking = (width < canvasWidth * .9 || height < canvasHeight * .9) && canvasWidth > minCacheSize && canvasHeight > minCacheSize;
+                shouldResizeCanvas = sizeGrowing || sizeShrinking;
+                if (sizeGrowing) {
+                    additionalWidth = width * .1 & ~1;
+                    additionalHeight = height * .1 & ~1;
+                }
+            }
+            if (shouldRedraw) {
+                if (shouldResizeCanvas) {
+                    this._cacheCanvas.width = Math.max(Math.ceil(width) + additionalWidth, minCacheSize);
+                    this._cacheCanvas.height = Math.max(Math.ceil(height) + additionalHeight, minCacheSize);
+                    this.cacheWidth = width;
+                    this.cacheHeight = height;
+                    this.cacheTranslationX = (width + additionalWidth) / 2;
+                    this.cacheTranslationY = (height + additionalHeight) / 2;
+                } else {
+                    this._cacheContext.setTransform(1, 0, 0, 1, 0, 0);
+                    this._cacheContext.clearRect(0, 0, this._cacheCanvas.width, this._cacheCanvas.height);
+                }
+                this._cacheContext.translate(this.cacheTranslationX, this.cacheTranslationY);
                 this._cacheContext.scale(zoomX, zoomY);
-                this.cacheWidth = width;
-                this.cacheHeight = height;
                 this.zoomX = zoomX;
                 this.zoomY = zoomY;
                 return true;
@@ -6164,7 +6209,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
                 }
                 this.dirty = true;
             }
-            if (this.group && this.stateProperties.indexOf(key) > -1) {
+            if (this.group && this.stateProperties.indexOf(key) > -1 && this.group.isOnACache()) {
                 this.group.set("dirty", true);
             }
             if (key === "width" || key === "height") {
@@ -6179,8 +6224,11 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             }
             return fabric.iMatrix.concat();
         },
+        isNotVisible: function() {
+            return this.opacity === 0 || this.width === 0 && this.height === 0 || !this.visible;
+        },
         render: function(ctx) {
-            if (this.width === 0 && this.height === 0 || !this.visible) {
+            if (this.isNotVisible()) {
                 return;
             }
             if (this.canvas && this.canvas.skipOffscreen && !this.group && !this.isOnScreen()) {
@@ -6209,6 +6257,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
                 }
                 this.drawCacheOnCanvas(ctx);
             } else {
+                this.dirty = false;
                 this.drawObject(ctx);
                 if (this.objectCaching && this.statefullCache) {
                     this.saveState({
@@ -6223,7 +6272,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             return false;
         },
         shouldCache: function() {
-            return this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isCaching());
+            this.ownCaching = this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isOnACache());
+            return this.ownCaching;
         },
         willDrawShadow: function() {
             return !!this.shadow;
@@ -6236,14 +6286,17 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
         },
         drawCacheOnCanvas: function(ctx) {
             ctx.scale(1 / this.zoomX, 1 / this.zoomY);
-            ctx.drawImage(this._cacheCanvas, -this.cacheWidth / 2, -this.cacheHeight / 2);
+            ctx.drawImage(this._cacheCanvas, -this.cacheTranslationX, -this.cacheTranslationY);
         },
         isCacheDirty: function(skipCanvas) {
-            if (!skipCanvas && this._updateCacheCanvas()) {
+            if (this.isNotVisible()) {
+                return false;
+            }
+            if (this._cacheCanvas && !skipCanvas && this._updateCacheCanvas()) {
                 return true;
             } else {
                 if (this.dirty || this.statefullCache && this.hasStateChanged("cacheProperties")) {
-                    if (!skipCanvas) {
+                    if (this._cacheCanvas && !skipCanvas) {
                         var width = this.cacheWidth / this.zoomX;
                         var height = this.cacheHeight / this.zoomY;
                         this._cacheContext.clearRect(-width / 2, -height / 2, width, height);
@@ -7054,40 +7107,40 @@ fabric.util.object.extend(fabric.Object.prototype, {
         extend(origin[destination], tmpObj, deep);
     }
     function _isEqual(origValue, currentValue, firstPass) {
-        if (!fabric.isLikelyNode && origValue instanceof Element) {
-            return origValue === currentValue;
-        } else if (origValue instanceof Array) {
+        if (origValue === currentValue) {
+            return true;
+        } else if (Array.isArray(origValue)) {
             if (origValue.length !== currentValue.length) {
                 return false;
             }
             for (var i = 0, len = origValue.length; i < len; i++) {
-                if (origValue[i] !== currentValue[i]) {
+                if (!_isEqual(origValue[i], currentValue[i])) {
                     return false;
                 }
             }
             return true;
         } else if (origValue && typeof origValue === "object") {
-            if (!firstPass && Object.keys(origValue).length !== Object.keys(currentValue).length) {
+            var keys = Object.keys(origValue), key;
+            if (!firstPass && keys.length !== Object.keys(currentValue).length) {
                 return false;
             }
-            for (var key in origValue) {
+            for (var i = 0, len = keys.length; i < len; i++) {
+                key = keys[i];
                 if (!_isEqual(origValue[key], currentValue[key])) {
                     return false;
                 }
             }
             return true;
-        } else {
-            return origValue === currentValue;
         }
     }
     fabric.util.object.extend(fabric.Object.prototype, {
         hasStateChanged: function(propertySet) {
             propertySet = propertySet || originalSet;
-            propertySet = "_" + propertySet;
-            if (!Object.keys(this[propertySet]).length) {
+            var dashedPropertySet = "_" + propertySet;
+            if (Object.keys(this[dashedPropertySet]).length < this[propertySet].length) {
                 return true;
             }
-            return !_isEqual(this[propertySet], this, true);
+            return !_isEqual(this[dashedPropertySet], this, true);
         },
         saveState: function(options) {
             var propertySet = options && options.propertySet || originalSet, destination = "_" + propertySet;
@@ -8011,19 +8064,20 @@ fabric.util.object.extend(fabric.Object.prototype, {
         fabric.warn("fabric.Path is already defined");
         return;
     }
+    var stateProperties = fabric.Object.prototype.stateProperties.concat();
+    stateProperties.push("path");
     var cacheProperties = fabric.Object.prototype.cacheProperties.concat();
-    cacheProperties.push("path");
+    cacheProperties.push("path", "fillRule");
     fabric.Path = fabric.util.createClass(fabric.Object, {
         type: "path",
         path: null,
         minX: 0,
         minY: 0,
         cacheProperties: cacheProperties,
+        stateProperties: stateProperties,
         initialize: function(path, options) {
             options = options || {};
-            if (options) {
-                this.setOptions(options);
-            }
+            this.callSuper("initialize", options);
             if (!path) {
                 path = [];
             }
@@ -8528,6 +8582,7 @@ fabric.util.object.extend(fabric.Object.prototype, {
         type: "group",
         strokeWidth: 0,
         subTargetCheck: false,
+        cacheProperties: [],
         initialize: function(objects, options, isAlreadyGrouped) {
             options = options || {};
             this._objects = [];
@@ -8678,17 +8733,17 @@ fabric.util.object.extend(fabric.Object.prototype, {
             this._transformDone = false;
         },
         shouldCache: function() {
-            var parentCache = this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isCaching());
-            this.caching = parentCache;
-            if (parentCache) {
+            var ownCache = this.objectCaching && (!this.group || this.needsItsOwnCache() || !this.group.isOnACache());
+            this.ownCaching = ownCache;
+            if (ownCache) {
                 for (var i = 0, len = this._objects.length; i < len; i++) {
                     if (this._objects[i].willDrawShadow()) {
-                        this.caching = false;
+                        this.ownCaching = false;
                         return false;
                     }
                 }
             }
-            return parentCache;
+            return ownCache;
         },
         willDrawShadow: function() {
             if (this.shadow) {
@@ -8701,8 +8756,8 @@ fabric.util.object.extend(fabric.Object.prototype, {
             }
             return false;
         },
-        isCaching: function() {
-            return this.caching || this.group && this.group.isCaching();
+        isOnACache: function() {
+            return this.ownCaching || this.group && this.group.isOnACache();
         },
         drawObject: function(ctx) {
             for (var i = 0, len = this._objects.length; i < len; i++) {
@@ -8718,8 +8773,10 @@ fabric.util.object.extend(fabric.Object.prototype, {
             }
             for (var i = 0, len = this._objects.length; i < len; i++) {
                 if (this._objects[i].isCacheDirty(true)) {
-                    var dim = this._getNonTransformedDimensions();
-                    this._cacheContext.clearRect(-dim.x / 2, -dim.y / 2, dim.x, dim.y);
+                    if (this._cacheCanvas) {
+                        var x = this.cacheWidth / this.zoomX, y = this.cacheHeight / this.zoomY;
+                        this._cacheContext.clearRect(-x / 2, -y / 2, x, y);
+                    }
                     return true;
                 }
             }
@@ -8737,9 +8794,6 @@ fabric.util.object.extend(fabric.Object.prototype, {
             ctx.restore();
         },
         _renderObject: function(object, ctx) {
-            if (!object.visible) {
-                return;
-            }
             var originalHasRotatingPoint = object.hasRotatingPoint;
             object.hasRotatingPoint = false;
             object.render(ctx);
@@ -9501,8 +9555,8 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
         }
         var attributeLocations = this.getAttributeLocations(gl, program);
         var uniformLocations = this.getUniformLocations(gl, program) || {};
-        uniformLocations.uWidth = gl.getUniformLocation(program, "uWidth");
-        uniformLocations.uHeight = gl.getUniformLocation(program, "uHeight");
+        uniformLocations.uStepW = gl.getUniformLocation(program, "uStepW");
+        uniformLocations.uStepH = gl.getUniformLocation(program, "uStepH");
         return {
             program: program,
             attributeLocations: attributeLocations,
@@ -9871,7 +9925,7 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
     var fabric = global.fabric || (global.fabric = {}), extend = fabric.util.object.extend, filters = fabric.Image.filters, createClass = fabric.util.createClass;
     filters.Noise = createClass(filters.BaseFilter, {
         type: "Noise",
-        fragmentSource: "precision highp float;\n" + "uniform sampler2D uTexture;\n" + "uniform float uHeight;\n" + "uniform float uNoise;\n" + "uniform float uSeed;\n" + "varying vec2 vTexCoord;\n" + "float rand(vec2 co, float seed, float vScale) {\n" + "return fract(sin(dot(co.xy * vScale ,vec2(12.9898 , 78.233))) * 43758.5453 * (seed + 0.01) / 2.0);\n" + "}\n" + "void main() {\n" + "vec4 color = texture2D(uTexture, vTexCoord);\n" + "color.rgb += (0.5 - rand(vTexCoord, uSeed, uHeight / 10.0)) * uNoise;\n" + "gl_FragColor = color;\n" + "}",
+        fragmentSource: "precision highp float;\n" + "uniform sampler2D uTexture;\n" + "uniform float uStepH;\n" + "uniform float uNoise;\n" + "uniform float uSeed;\n" + "varying vec2 vTexCoord;\n" + "float rand(vec2 co, float seed, float vScale) {\n" + "return fract(sin(dot(co.xy * vScale ,vec2(12.9898 , 78.233))) * 43758.5453 * (seed + 0.01) / 2.0);\n" + "}\n" + "void main() {\n" + "vec4 color = texture2D(uTexture, vTexCoord);\n" + "color.rgb += (0.5 - rand(vTexCoord, uSeed, 0.1 / uStepH)) * uNoise;\n" + "gl_FragColor = color;\n" + "}",
         mainParameter: "noise",
         noise: 0,
         applyTo2d: function(options) {
@@ -9942,8 +9996,8 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
         getUniformLocations: function(gl, program) {
             return {
                 uBlocksize: gl.getUniformLocation(program, "uBlocksize"),
-                uWidth: gl.getUniformLocation(program, "uWidth"),
-                uHeight: gl.getUniformLocation(program, "uHeight")
+                uStepW: gl.getUniformLocation(program, "uStepW"),
+                uStepH: gl.getUniformLocation(program, "uStepH")
             };
         },
         sendUniformData: function(gl, uniformLocations) {
@@ -12246,6 +12300,7 @@ fabric.util.object.extend(fabric.IText.prototype, {
         this.hiddenTextarea.setAttribute("autocorrect", "off");
         this.hiddenTextarea.setAttribute("autocomplete", "off");
         this.hiddenTextarea.setAttribute("spellcheck", "false");
+        this.hiddenTextarea.setAttribute("data-fabric-hiddentextarea", "");
         var style = this._calcTextareaPosition();
         this.hiddenTextarea.style.cssText = "white-space: nowrap; position: absolute; top: " + style.top + "; left: " + style.left + "; z-index: -999; opacity: 0; width: 1px; height: 1px; font-size: 1px;" + " line-height: 1px; paddingｰtop: " + style.fontSize + ";";
         fabric.document.body.appendChild(this.hiddenTextarea);
