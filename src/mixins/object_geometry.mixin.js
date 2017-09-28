@@ -80,9 +80,9 @@
      */
     intersectsWithObject: function(other, absolute, calculate) {
       var intersection = fabric.Intersection.intersectPolygonPolygon(
-            this.getCoords(absolute, calculate),
-            other.getCoords(absolute, calculate)
-          );
+        this.getCoords(absolute, calculate),
+        other.getCoords(absolute, calculate)
+      );
 
       return intersection.status === 'Intersection'
         || other.isContainedWithinObject(this, absolute, calculate)
@@ -138,8 +138,8 @@
      */
     containsPoint: function(point, lines, absolute, calculate) {
       var lines = lines || this._getImageLines(
-        calculate ? this.calcCoords(absolute) : absolute ? this.aCoords : this.oCoords
-      ),
+            calculate ? this.calcCoords(absolute) : absolute ? this.aCoords : this.oCoords
+          ),
           xPoints = this._findCrossPoints(point, lines);
 
       // if xPoints is odd then point is inside the object
@@ -168,7 +168,7 @@
       if (this.intersectsWithRect(pointTL, pointBR, true)) {
         return true;
       }
-      // worst case scenario the object is so big that contanins the screen
+      // worst case scenario the object is so big that contains the screen
       var centerPoint = { x: (pointTL.x + pointBR.x) / 2, y: (pointTL.y + pointBR.y) / 2 };
       if (this.containsPoint(centerPoint, null, true)) {
         return true;
@@ -209,7 +209,7 @@
      * @param {fabric.Point} point Point to check
      * @param {Object} lines Coordinates of the object being evaluated
      */
-     // remove yi, not used but left code here just in case.
+    // remove yi, not used but left code here just in case.
     _findCrossPoints: function(point, lines) {
       var b1, b2, a1, a2, xi, // yi,
           xcount = 0,
@@ -286,16 +286,15 @@
      * Returns width of an object bounding box counting transformations
      * @return {Number} width value
      */
-    getWidth: function() {
+    getScaledWidth: function() {
       return this._getTransformedDimensions().x;
     },
 
     /**
      * Returns height of an object bounding box counting transformations
-     * to be renamed in 2.0
      * @return {Number} height value
      */
-    getHeight: function() {
+    getScaledHeight: function() {
       return this._getTransformedDimensions().y;
     },
 
@@ -314,6 +313,9 @@
           return this.minScaleLimit;
         }
       }
+      else if (value === 0) {
+        return 0.0001;
+      }
       return value;
     },
 
@@ -324,16 +326,8 @@
      * @chainable
      */
     scale: function(value) {
-      value = this._constrainScale(value);
-
-      if (value < 0) {
-        this.flipX = !this.flipX;
-        this.flipY = !this.flipY;
-        value *= -1;
-      }
-
-      this.scaleX = value;
-      this.scaleY = value;
+      this._set('scaleX', value);
+      this._set('scaleY', value);
       return this.setCoords();
     },
 
@@ -345,7 +339,7 @@
      */
     scaleToWidth: function(value) {
       // adjust to bounding rect factor so that rotated shapes would fit as well
-      var boundingRectFactor = this.getBoundingRect().width / this.getWidth();
+      var boundingRectFactor = this.getBoundingRect().width / this.getScaledWidth();
       return this.scale(value / this.width / boundingRectFactor);
     },
 
@@ -357,7 +351,7 @@
      */
     scaleToHeight: function(value) {
       // adjust to bounding rect factor so that rotated shapes would fit as well
-      var boundingRectFactor = this.getBoundingRect().height / this.getHeight();
+      var boundingRectFactor = this.getBoundingRect().height / this.getScaledHeight();
       return this.scale(value / this.height / boundingRectFactor);
     },
 
@@ -468,24 +462,39 @@
     calcTransformMatrix: function(skipGroup) {
       var center = this.getCenterPoint(),
           translateMatrix = [1, 0, 0, 1, center.x, center.y],
-          rotateMatrix = this._calcRotateMatrix(),
+          rotateMatrix,
           dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true),
-          matrix = this.group && !skipGroup ? this.group.calcTransformMatrix() : fabric.iMatrix.concat();
-      matrix = multiplyMatrices(matrix, translateMatrix);
-      matrix = multiplyMatrices(matrix, rotateMatrix);
+          matrix;
+      if (this.group && !skipGroup) {
+        matrix = multiplyMatrices(this.group.calcTransformMatrix(), translateMatrix);
+      }
+      else {
+        matrix = translateMatrix;
+      }
+      if (this.angle) {
+        rotateMatrix = this._calcRotateMatrix();
+        matrix = multiplyMatrices(matrix, rotateMatrix);
+      }
       matrix = multiplyMatrices(matrix, dimensionMatrix);
       return matrix;
     },
 
     _calcDimensionsTransformMatrix: function(skewX, skewY, flipping) {
-      var skewMatrixX = [1, 0, Math.tan(degreesToRadians(skewX)), 1],
-          skewMatrixY = [1, Math.tan(degreesToRadians(skewY)), 0, 1],
+      var skewMatrix,
           scaleX = this.scaleX * (flipping && this.flipX ? -1 : 1),
           scaleY = this.scaleY * (flipping && this.flipY ? -1 : 1),
-          scaleMatrix = [scaleX, 0, 0, scaleY],
-          m = multiplyMatrices(scaleMatrix, skewMatrixX, true);
-      return multiplyMatrices(m, skewMatrixY, true);
+          scaleMatrix = [scaleX, 0, 0, scaleY, 0, 0];
+      if (skewX) {
+        skewMatrix = [1, 0, Math.tan(degreesToRadians(skewX)), 1];
+        scaleMatrix = multiplyMatrices(scaleMatrix, skewMatrix, true);
+      }
+      if (skewY) {
+        skewMatrix = [1, Math.tan(degreesToRadians(skewY)), 0, 1];
+        scaleMatrix = multiplyMatrices(scaleMatrix, skewMatrix, true);
+      }
+      return scaleMatrix;
     },
+
 
     /*
      * Calculate object dimensions from its properties

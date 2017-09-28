@@ -43,260 +43,6 @@
   fabric.Object = fabric.util.createClass(fabric.CommonMethods, /** @lends fabric.Object.prototype */ {
 
     /**
-     * Retrieves object's {@link fabric.Object#clipTo|clipping function}
-     * @method getClipTo
-     * @memberOf fabric.Object.prototype
-     * @return {Function}
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#clipTo|clipping function}
-     * @method setClipTo
-     * @memberOf fabric.Object.prototype
-     * @param {Function} clipTo Clipping function
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#transformMatrix|transformMatrix}
-     * @method getTransformMatrix
-     * @memberOf fabric.Object.prototype
-     * @return {Array} transformMatrix
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#transformMatrix|transformMatrix}
-     * @method setTransformMatrix
-     * @memberOf fabric.Object.prototype
-     * @param {Array} transformMatrix
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#visible|visible} state
-     * @method getVisible
-     * @memberOf fabric.Object.prototype
-     * @return {Boolean} True if visible
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#visible|visible} state
-     * @method setVisible
-     * @memberOf fabric.Object.prototype
-     * @param {Boolean} value visible value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#shadow|shadow}
-     * @method getShadow
-     * @memberOf fabric.Object.prototype
-     * @return {Object} Shadow instance
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#stroke|stroke}
-     * @method getStroke
-     * @memberOf fabric.Object.prototype
-     * @return {String} stroke value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#stroke|stroke}
-     * @method setStroke
-     * @memberOf fabric.Object.prototype
-     * @param {String} value stroke value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#strokeWidth|strokeWidth}
-     * @method getStrokeWidth
-     * @memberOf fabric.Object.prototype
-     * @return {Number} strokeWidth value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#strokeWidth|strokeWidth}
-     * @method setStrokeWidth
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value strokeWidth value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#originX|originX}
-     * @method getOriginX
-     * @memberOf fabric.Object.prototype
-     * @return {String} originX value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#originX|originX}
-     * @method setOriginX
-     * @memberOf fabric.Object.prototype
-     * @param {String} value originX value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#originY|originY}
-     * @method getOriginY
-     * @memberOf fabric.Object.prototype
-     * @return {String} originY value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#originY|originY}
-     * @method setOriginY
-     * @memberOf fabric.Object.prototype
-     * @param {String} value originY value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#fill|fill}
-     * @method getFill
-     * @memberOf fabric.Object.prototype
-     * @return {String} Fill value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#fill|fill}
-     * @method setFill
-     * @memberOf fabric.Object.prototype
-     * @param {String} value Fill value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#opacity|opacity}
-     * @method getOpacity
-     * @memberOf fabric.Object.prototype
-     * @return {Number} Opacity value (0-1)
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#opacity|opacity}
-     * @method setOpacity
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value Opacity value (0-1)
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#angle|angle} (in degrees)
-     * @method getAngle
-     * @memberOf fabric.Object.prototype
-     * @return {Number}
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#top|top position}
-     * @method getTop
-     * @memberOf fabric.Object.prototype
-     * @return {Number} Top value (in pixels)
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#top|top position}
-     * @method setTop
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value Top value (in pixels)
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#left|left position}
-     * @method getLeft
-     * @memberOf fabric.Object.prototype
-     * @return {Number} Left value (in pixels)
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#left|left position}
-     * @method setLeft
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value Left value (in pixels)
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#scaleX|scaleX} value
-     * @method getScaleX
-     * @memberOf fabric.Object.prototype
-     * @return {Number} scaleX value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#scaleX|scaleX} value
-     * @method setScaleX
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value scaleX value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#scaleY|scaleY} value
-     * @method getScaleY
-     * @memberOf fabric.Object.prototype
-     * @return {Number} scaleY value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#scaleY|scaleY} value
-     * @method setScaleY
-     * @memberOf fabric.Object.prototype
-     * @param {Number} value scaleY value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#flipX|flipX} value
-     * @method getFlipX
-     * @memberOf fabric.Object.prototype
-     * @return {Boolean} flipX value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#flipX|flipX} value
-     * @method setFlipX
-     * @memberOf fabric.Object.prototype
-     * @param {Boolean} value flipX value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's {@link fabric.Object#flipY|flipY} value
-     * @method getFlipY
-     * @memberOf fabric.Object.prototype
-     * @return {Boolean} flipY value
-     */
-
-    /**
-     * Sets object's {@link fabric.Object#flipY|flipY} value
-     * @method setFlipY
-     * @memberOf fabric.Object.prototype
-     * @param {Boolean} value flipY value
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-
-    /**
      * Type of an object (rect, circle, path, etc.).
      * Note that this property is meant to be read-only and not meant to be modified.
      * If you modify, certain parts of Fabric (such as JSON loading) won't work correctly.
@@ -614,7 +360,7 @@
      * @type Number
      * @default
      */
-    minScaleLimit:            0.01,
+    minScaleLimit:            0,
 
     /**
      * When set to `false`, an object can not be selected for modification (using either point-click-based or group-based selection).
@@ -683,6 +429,7 @@
     /**
      * Function that determines clipping of an object (context is passed as a first argument)
      * Note that context origin is at the object's center point (not left/top corner)
+     * @deprecated since 2.0.0
      * @type Function
      */
     clipTo:                   null,
@@ -799,6 +546,23 @@
     dirty:                true,
 
     /**
+     * keeps the value of the last hovered coner during mouse move.
+     * 0 is no corner, or 'mt', 'ml', 'mtr' etc..
+     * It should be private, but there is no harm in using it as
+     * a read-only property.
+     * @type number|string|any
+     * @default 0
+     */
+    __corner: 0,
+
+    /**
+     * Determins if the fill or the stroke is drawn first (one of "fill" or "stroke")
+     * @type String
+     * @default
+     */
+    paintFirst:           'fill',
+
+    /**
      * List of properties to consider when checking if state
      * of an object is changed (fabric.Object#hasStateChanged)
      * as well as for history (undo/redo) purposes
@@ -808,7 +572,7 @@
       'top left width height scaleX scaleY flipX flipY originX originY transformMatrix ' +
       'stroke strokeWidth strokeDashArray strokeLineCap strokeLineJoin strokeMiterLimit ' +
       'angle opacity fill globalCompositeOperation shadow clipTo visible backgroundColor ' +
-      'skewX skewY fillRule'
+      'skewX skewY fillRule paintFirst'
     ).split(' '),
 
     /**
@@ -816,7 +580,7 @@
      * @type Array
      */
     cacheProperties: (
-      'fill stroke strokeWidth strokeDashArray width height' +
+      'fill stroke strokeWidth strokeDashArray width height paintFirst' +
       ' strokeLineCap strokeLineJoin strokeMiterLimit backgroundColor'
     ).split(' '),
 
@@ -825,7 +589,6 @@
      * @param {Object} [options] Options object
      */
     initialize: function(options) {
-      options = options || { };
       if (options) {
         this.setOptions(options);
       }
@@ -945,8 +708,6 @@
         if (shouldResizeCanvas) {
           this._cacheCanvas.width = Math.max(Math.ceil(width) + additionalWidth, minCacheSize);
           this._cacheCanvas.height = Math.max(Math.ceil(height) + additionalHeight, minCacheSize);
-          this.cacheWidth = width;
-          this.cacheHeight = height;
           this.cacheTranslationX = (width + additionalWidth) / 2;
           this.cacheTranslationY = (height + additionalHeight) / 2;
         }
@@ -954,6 +715,8 @@
           this._cacheContext.setTransform(1, 0, 0, 1, 0, 0);
           this._cacheContext.clearRect(0, 0, this._cacheCanvas.width, this._cacheCanvas.height);
         }
+        this.cacheWidth = width;
+        this.cacheHeight = height;
         this._cacheContext.translate(this.cacheTranslationX, this.cacheTranslationY);
         this._cacheContext.scale(zoomX, zoomY);
         this.zoomX = zoomX;
@@ -1006,6 +769,7 @@
 
           object = {
             type:                     this.type,
+            version:                  fabric.version,
             originX:                  this.originX,
             originY:                  this.originY,
             left:                     toFixed(this.left, NUM_FRACTION_DIGITS),
@@ -1021,7 +785,7 @@
             strokeMiterLimit:         toFixed(this.strokeMiterLimit, NUM_FRACTION_DIGITS),
             scaleX:                   toFixed(this.scaleX, NUM_FRACTION_DIGITS),
             scaleY:                   toFixed(this.scaleY, NUM_FRACTION_DIGITS),
-            angle:                    toFixed(this.getAngle(), NUM_FRACTION_DIGITS),
+            angle:                    toFixed(this.angle, NUM_FRACTION_DIGITS),
             flipX:                    this.flipX,
             flipY:                    this.flipY,
             opacity:                  toFixed(this.opacity, NUM_FRACTION_DIGITS),
@@ -1030,6 +794,7 @@
             clipTo:                   this.clipTo && String(this.clipTo),
             backgroundColor:          this.backgroundColor,
             fillRule:                 this.fillRule,
+            paintFirst:               this.paintFirst,
             globalCompositeOperation: this.globalCompositeOperation,
             transformMatrix:          this.transformMatrix ? this.transformMatrix.concat() : null,
             skewX:                    toFixed(this.skewX, NUM_FRACTION_DIGITS),
@@ -1037,7 +802,6 @@
           };
 
       fabric.util.populateWithProperties(this, object, propertiesToInclude);
-
       if (!this.includeDefaultValues) {
         object = this._removeDefaultValues(object);
       }
@@ -1102,7 +866,7 @@
 
     /**
      * Return the object opacity counting also the group property
-     * @return {Object} object with scaleX and scaleY properties
+     * @return {Number}
      */
     getObjectOpacity: function() {
       var opacity = this.opacity;
@@ -1152,10 +916,11 @@
         this.group.set('dirty', true);
       }
 
-      if (key === 'width' || key === 'height') {
-        this.minScaleLimit = Math.min(0.01, 1 / Math.max(this.width, this.height));
-      }
-
+      //TODO: Sander - maybe we need to uncomment this
+      //if (key === 'width' || key === 'height') {
+        //this.minScaleLimit = Math.min(0.01, 1 / Math.max(this.width, this.height));
+      //}
+      
       return this;
     },
 
@@ -1245,6 +1010,9 @@
      * @returns false
      */
     needsItsOwnCache: function() {
+      if (this.paintFirst === 'stroke' && typeof this.shadow === 'object') {
+        return true;
+      }
       return false;
     },
 
@@ -1268,7 +1036,7 @@
      * @return {Boolean}
      */
     willDrawShadow: function() {
-      return !!this.shadow;
+      return !!this.shadow && (this.shadow.offsetX !== 0 || this.shadow.offsetY !== 0);
     },
 
     /**
@@ -1345,7 +1113,7 @@
      * @param {CanvasRenderingContext2D} ctx Context to render on
      */
     _setOpacity: function(ctx) {
-      if (this.group && !this.group.transformDone) {
+      if (this.group && !this.group._transformDone) {
         ctx.globalAlpha = this.getObjectOpacity();
       }
       else {
@@ -1416,7 +1184,7 @@
       if (!this.group) {
         ctx.globalAlpha = this.isMoving ? this.borderOpacityWhenMoving : 1;
       }
-      if (this.group && this.group === this.canvas.getActiveGroup()) {
+      if (styleOverride.forActiveSelection) {
         ctx.rotate(degreesToRadians(options.angle));
         drawBorders && this.drawBordersInGroup(ctx, options, styleOverride);
       }
@@ -1469,8 +1237,8 @@
      * @param {Object} filler fabric.Pattern or fabric.Gradient
      */
     _applyPatternGradientTransform: function(ctx, filler) {
-      if (!filler.toLive) {
-        return;
+      if (!filler || !filler.toLive) {
+        return { offsetX: 0, offsetY: 0 };
       }
       var transform = filler.gradientTransform || filler.patternTransform;
       var offsetX = -this.width / 2 + filler.offsetX || 0,
@@ -1478,6 +1246,22 @@
       ctx.translate(offsetX, offsetY);
       if (transform) {
         ctx.transform.apply(ctx, transform);
+      }
+      return { offsetX: offsetX, offsetY: offsetY };
+    },
+
+    /**
+     * @private
+     * @param {CanvasRenderingContext2D} ctx Context to render on
+     */
+    _renderPaintInOrder: function(ctx) {
+      if (this.paintFirst === 'stroke') {
+        this._renderStroke(ctx);
+        this._renderFill(ctx);
+      }
+      else {
+        this._renderFill(ctx);
+        this._renderStroke(ctx);
       }
     },
 
@@ -1528,15 +1312,13 @@
     },
 
     /**
-     * This function is an helper for svg import. it removes the transform matrix
-     * and set to object properties that fabricjs can handle
+     * This function is an helper for svg import. it decoompose the transformMatrix
+     * and assign properties to object.
      * untransformed coordinates
      * @private
      * @chainable
-     * @return {thisArg}
      */
-    _removeTransformMatrix: function() {
-      var center = this._findCenterFromElement();
+    _assignTransformMatrixProps: function() {
       if (this.transformMatrix) {
         var options = fabric.util.qrDecompose(this.transformMatrix);
         this.flipX = false;
@@ -1546,6 +1328,20 @@
         this.angle = options.angle;
         this.skewX = options.skewX;
         this.skewY = 0;
+      }
+    },
+
+    /**
+     * This function is an helper for svg import. it removes the transform matrix
+     * and set to object properties that fabricjs can handle
+     * @private
+     * @chainable
+     * @return {thisArg}
+     */
+    _removeTransformMatrix: function() {
+      var center = this._findCenterFromElement();
+      if (this.transformMatrix) {
+        this._assignTransformMatrixProps();
         center = fabric.util.transformPoint(center, this.transformMatrix);
       }
       this.transformMatrix = null;
@@ -1617,13 +1413,11 @@
       }
 
       var origParams = {
-        active: this.get('active'),
-        left: this.getLeft(),
-        top: this.getTop()
+        left: this.left,
+        top: this.top
       };
 
-      this.set('active', false);
-      this.setPositionByOrigin(new fabric.Point(canvas.getWidth() / 2, canvas.getHeight() / 2), 'center', 'center');
+      this.setPositionByOrigin(new fabric.Point(canvas.width / 2, canvas.height / 2), 'center', 'center');
 
       var originalCanvas = this.canvas;
       canvas.add(this);
@@ -1798,12 +1592,12 @@
     },
 
     /**
-     * Sets "angle" of an instance
+     * Sets "angle" of an instance with centered rotation
      * @param {Number} angle Angle value (in degrees)
      * @return {fabric.Object} thisArg
      * @chainable
      */
-    setAngle: function(angle) {
+    rotate: function(angle) {
       var shouldCenterOrigin = (this.originX !== 'center' || this.originY !== 'center') && this.centeredRotation;
 
       if (shouldCenterOrigin) {
@@ -1886,16 +1680,6 @@
     },
 
     /**
-     * Removes object from canvas to which it was added last
-     * @return {fabric.Object} thisArg
-     * @chainable
-     */
-    remove: function() {
-      this.canvas && this.canvas.remove(this);
-      return this;
-    },
-
-    /**
      * Returns coordinates of a pointer relative to an object
      * @param {Event} e Event to operate upon
      * @param {Object} [pointer] Pointer to operate upon (instead of event)
@@ -1927,14 +1711,7 @@
     }
   });
 
-  fabric.util.createAccessors(fabric.Object);
-
-  /**
-   * Alias for {@link fabric.Object.prototype.setAngle}
-   * @alias rotate -> setAngle
-   * @memberOf fabric.Object
-   */
-  fabric.Object.prototype.rotate = fabric.Object.prototype.setAngle;
+  fabric.util.createAccessors && fabric.util.createAccessors(fabric.Object);
 
   extend(fabric.Object.prototype, fabric.Observable);
 

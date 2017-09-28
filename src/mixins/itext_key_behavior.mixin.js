@@ -10,9 +10,9 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
     this.hiddenTextarea.setAttribute('autocomplete', 'off');
     this.hiddenTextarea.setAttribute('spellcheck', 'false');
     this.hiddenTextarea.setAttribute('data-fabric-hiddentextarea', '');
-
+    this.hiddenTextarea.setAttribute('wrap', 'off');
     var style = this._calcTextareaPosition();
-    this.hiddenTextarea.style.cssText = 'white-space: nowrap; position: absolute; top: ' + style.top +
+    this.hiddenTextarea.style.cssText = 'position: absolute; top: ' + style.top +
     '; left: ' + style.left + '; z-index: -999; opacity: 0; width: 1px; height: 1px; font-size: 1px;' +
     ' line-height: 1px; paddingｰtop: ' + style.fontSize + ';';
     fabric.document.body.appendChild(this.hiddenTextarea);
@@ -34,9 +34,17 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
   },
 
   /**
-   * @private
+   * For functionalities on keyDown
+   * Map a special key to a function of the instance/prototype
+   * If you need different behaviour for ESC or TAB or arrows, you have to change
+   * this map setting the name of a function that you build on the fabric.Itext or
+   * your prototype.
+   * the map change will affect all Instances unless you need for only some text Instances
+   * in that case you have to clone this object and assign your Instance.
+   * this.keysMap = fabric.util.object.clone(this.keysMap);
+   * The function must be in fabric.Itext.prototype.myFunction And will receive event as args[0]
    */
-  _keysMap: {
+  keysMap: {
     9:  'exitEditing',
     27: 'exitEditing',
     33: 'moveCursorUp',
@@ -50,17 +58,17 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
   },
 
   /**
-   * @private
+   * For functionalities on keyUp + ctrl || cmd
    */
-  _ctrlKeysMapUp: {
+  ctrlKeysMapUp: {
     67: 'copy',
     88: 'cut'
   },
 
   /**
-   * @private
+   * For functionalities on keyDown + ctrl || cmd
    */
-  _ctrlKeysMapDown: {
+  ctrlKeysMapDown: {
     65: 'selectAll'
   },
 
@@ -74,14 +82,14 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
    * @param {Event} e Event object
    */
   onKeyDown: function(e) {
-    if (!this.isEditing　|| this.inCompositionMode) {
+    if (!this.isEditing || this.inCompositionMode) {
       return;
     }
-    if (e.keyCode in this._keysMap) {
-      this[this._keysMap[e.keyCode]](e);
+    if (e.keyCode in this.keysMap) {
+      this[this.keysMap[e.keyCode]](e);
     }
-    else if ((e.keyCode in this._ctrlKeysMapDown) && (e.ctrlKey || e.metaKey)) {
-      this[this._ctrlKeysMapDown[e.keyCode]](e);
+    else if ((e.keyCode in this.ctrlKeysMapDown) && (e.ctrlKey || e.metaKey)) {
+      this[this.ctrlKeysMapDown[e.keyCode]](e);
     }
     else {
       return;
@@ -109,8 +117,8 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
       this._copyDone = false;
       return;
     }
-    if ((e.keyCode in this._ctrlKeysMapUp) && (e.ctrlKey || e.metaKey)) {
-      this[this._ctrlKeysMapUp[e.keyCode]](e);
+    if ((e.keyCode in this.ctrlKeysMapUp) && (e.ctrlKey || e.metaKey)) {
+      this[this.ctrlKeysMapUp[e.keyCode]](e);
     }
     else {
       return;
@@ -146,6 +154,7 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
         this.canvas.fire('text:changed', { target: this });
         this.canvas.requestRenderAll();
       }
+      return;
     }
 
     if (this.selectionStart !== this.selectionEnd) {
@@ -220,10 +229,9 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
       //do not cut-copy if no selection
       return;
     }
-    var selectedText = this.getSelectedText();
 
-    fabric.copiedText = selectedText;
-    fabric.copiedTextStyle = this.getSelectionStyles(this.selectionStart, this.selectionEnd);
+    fabric.copiedText = this.getSelectedText();
+    fabric.copiedTextStyle = this.getSelectionStyles(this.selectionStart, this.selectionEnd, true);
     this._copyDone = true;
   },
 
@@ -409,8 +417,8 @@ fabric.util.object.extend(fabric.IText.prototype, /** @lends fabric.IText.protot
    */
   moveCursorWithShift: function(offset) {
     var newSelection = this._selectionDirection === 'left'
-    ? this.selectionStart + offset
-    : this.selectionEnd + offset;
+      ? this.selectionStart + offset
+      : this.selectionEnd + offset;
     this.setSelectionStartEndWithShift(this.selectionStart, this.selectionEnd, newSelection);
     return offset !== 0;
   },

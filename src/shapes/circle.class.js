@@ -102,12 +102,13 @@
       if (angle === 0) {
         markup.push(
           '<circle ', this.getSvgId(),
-            'cx="' + x + '" cy="' + y + '" ',
-            'r="', this.radius,
-            '" style="', this.getSvgStyles(),
-            '" transform="', this.getSvgTransform(),
-            ' ', this.getSvgTransformMatrix(),
-          '"/>\n'
+          'cx="' + x + '" cy="' + y + '" ',
+          'r="', this.radius,
+          '" style="', this.getSvgStyles(),
+          '" transform="', this.getSvgTransform(),
+          ' ', this.getSvgTransformMatrix(), '"',
+          this.addPaintOrder(),
+          '/>\n'
         );
       }
       else {
@@ -123,7 +124,8 @@
           ' 0 ', +largeFlag + ' 1', ' ' + endX + ' ' + endY,
           '" style="', this.getSvgStyles(),
           '" transform="', this.getSvgTransform(),
-          ' ', this.getSvgTransformMatrix(),
+          ' ', this.getSvgTransformMatrix(), '"',
+          this.addPaintOrder(),
           '"/>\n'
         );
       }
@@ -138,13 +140,13 @@
      */
     _render: function(ctx) {
       ctx.beginPath();
-      ctx.arc(0,
-              0,
-              this.radius,
-              this.startAngle,
-              this.endAngle, false);
-      this._renderFill(ctx);
-      this._renderStroke(ctx);
+      ctx.arc(
+        0,
+        0,
+        this.radius,
+        this.startAngle,
+        this.endAngle, false);
+      this._renderPaintInOrder(ctx);
     },
 
     /**
@@ -202,8 +204,6 @@
 
     parsedAttributes.left = (parsedAttributes.left || 0) - parsedAttributes.radius;
     parsedAttributes.top = (parsedAttributes.top || 0) - parsedAttributes.radius;
-    parsedAttributes.originX = 'left';
-    parsedAttributes.originY = 'top';
     callback(new fabric.Circle(extend(parsedAttributes, options)));
   };
 

@@ -99,160 +99,6 @@
     _reWords: /\S+/g,
 
     /**
-     * Retrieves object's fontSize
-     * @method getFontSize
-     * @memberOf fabric.Text.prototype
-     * @return {String} Font size (in pixels)
-     */
-
-    /**
-     * Sets object's fontSize
-     * Does not update the object .width and .height,
-     * call .initDimensions() to update the values.
-     * @method setFontSize
-     * @memberOf fabric.Text.prototype
-     * @param {Number} fontSize Font size (in pixels)
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's fontWeight
-     * @method getFontWeight
-     * @memberOf fabric.Text.prototype
-     * @return {(String|Number)} Font weight
-     */
-
-    /**
-     * Sets object's fontWeight
-     * Does not update the object .width and .height,
-     * call .initDimensions() to update the values.
-     * @method setFontWeight
-     * @memberOf fabric.Text.prototype
-     * @param {(Number|String)} fontWeight Font weight
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's fontFamily
-     * @method getFontFamily
-     * @memberOf fabric.Text.prototype
-     * @return {String} Font family
-     */
-
-    /**
-     * Sets object's fontFamily
-     * Does not update the object .width and .height,
-     * call .initDimensions() to update the values.
-     * @method setFontFamily
-     * @memberOf fabric.Text.prototype
-     * @param {String} fontFamily Font family
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's text
-     * @method getText
-     * @memberOf fabric.Text.prototype
-     * @return {String} text
-     */
-
-    /**
-     * Sets object's text
-     * Does not update the object .width and .height,
-     * call .initDimensions() to update the values.
-     * @method setText
-     * @memberOf fabric.Text.prototype
-     * @param {String} text Text
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's underline
-     * @method getUnderline
-     * @memberOf fabric.Text.prototype
-     * @return {Boolean} underline enabled or disabled
-     */
-
-    /**
-     * Sets object's underline
-     * @method setUnderline
-     * @memberOf fabric.Text.prototype
-     * @param {Boolean} underline Text decoration
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's fontStyle
-     * @method getFontStyle
-     * @memberOf fabric.Text.prototype
-     * @return {String} Font style
-     */
-
-    /**
-     * Sets object's fontStyle
-     * Does not update the object .width and .height,
-     * call .initDimensions() to update the values.
-     * @method setFontStyle
-     * @memberOf fabric.Text.prototype
-     * @param {String} fontStyle Font style
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's lineHeight
-     * @method getLineHeight
-     * @memberOf fabric.Text.prototype
-     * @return {Number} Line height
-     */
-
-    /**
-     * Sets object's lineHeight
-     * @method setLineHeight
-     * @memberOf fabric.Text.prototype
-     * @param {Number} lineHeight Line height
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's textAlign
-     * @method getTextAlign
-     * @memberOf fabric.Text.prototype
-     * @return {String} Text alignment
-     */
-
-    /**
-     * Sets object's textAlign
-     * @method setTextAlign
-     * @memberOf fabric.Text.prototype
-     * @param {String} textAlign Text alignment
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
-     * Retrieves object's textBackgroundColor
-     * @method getTextBackgroundColor
-     * @memberOf fabric.Text.prototype
-     * @return {String} Text background color
-     */
-
-    /**
-     * Sets object's textBackgroundColor
-     * @method setTextBackgroundColor
-     * @memberOf fabric.Text.prototype
-     * @param {String} textBackgroundColor Text background color
-     * @return {fabric.Text}
-     * @chainable
-     */
-
-    /**
      * Type of an object
      * @type String
      * @default
@@ -421,7 +267,8 @@
       'fontStyle',
       'underline',
       'overline',
-      'linethrough'
+      'linethrough',
+      'textBackgroundColor',
     ],
 
     /**
@@ -436,7 +283,7 @@
      * @return {fabric.Text} thisArg
      */
     initialize: function(text, options) {
-      options = options || { };
+      this.styles = options ? (options.styles || { }) : { };
       this.text = text;
       this.__skipDimension = true;
       this.callSuper('initialize', options);
@@ -463,69 +310,16 @@
     },
 
     /**
-     * Returns true if object has no styling or no styling in a line
-     * @param {Number} lineIndex
-     * @return {Boolean}
-     */
-    isEmptyStyles: function(lineIndex) {
-      if (!this.styles) {
-        return true;
-      }
-      if (typeof lineIndex !== 'undefined' && !this.styles[lineIndex]) {
-        return true;
-      }
-      var obj = typeof lineIndex === 'undefined' ? this.styles : { line: this.styles[lineIndex] };
-      for (var p1 in obj) {
-        for (var p2 in obj[p1]) {
-          // eslint-disable-next-line no-unused-vars
-          for (var p3 in obj[p1][p2]) {
-            return false;
-          }
-        }
-      }
-      return true;
-    },
-
-    /**
-     * Returns true if object has a style property or has it ina specified line
-     * @param {Number} lineIndex
-     * @return {Boolean}
-     */
-    styleHas: function(property, lineIndex) {
-      if (!this.styles) {
-        return false;
-      }
-      if (typeof lineIndex !== 'undefined' && !this.styles[lineIndex]) {
-        return false;
-      }
-      var obj = typeof lineIndex === 'undefined' ? this.styles : { line: this.styles[lineIndex] };
-      // eslint-disable-next-line
-      for (var p1 in obj) {
-        // eslint-disable-next-line
-        for (var p2 in obj[p1]) {
-          if (typeof obj[p1][p2][property] !== 'undefined') {
-            return true;
-          }
-        }
-      }
-      return false;
-    },
-
-    /**
      * @private
+     * Divides text into lines of text and lines of graphemes.
      */
-    _extendStyles: function(index, styles) {
-      var loc = this.get2DCursorLocation(index);
-
-      if (!this._getLineStyle(loc.lineIndex)) {
-        this._setLineStyle(loc.lineIndex, {});
-      }
-
-      if (!this._getStyleDeclaration(loc.lineIndex, loc.charIndex)) {
-        this._setStyleDeclaration(loc.lineIndex, loc.charIndex, {});
-      }
-
-      fabric.util.object.extend(this._getStyleDeclaration(loc.lineIndex, loc.charIndex), styles);
+    _splitText: function() {
+      var newLines = this._splitTextIntoLines(this.text);
+      this.textLines = newLines.lines;
+      this._textLines = newLines.graphemeLines;
+      this._unwrappedTextLines = newLines._unwrappedLines;
+      this._text = newLines.graphemeText;
+      return newLines;
     },
 
     /**
@@ -537,11 +331,7 @@
       if (this.__skipDimension) {
         return;
       }
-      var newLines = this._splitTextIntoLines(this.text);
-      this.textLines = newLines.lines;
-      this._unwrappedTextLines = newLines._unwrappedLines;
-      this._textLines = newLines.graphemeLines;
-      this._text = newLines.graphemeText;
+      this._splitText();
       this._clearCache();
       this.width = this.calcTextWidth() || this.cursorWidth || MIN_TEXT_WIDTH;
       if (this.textAlign === 'justify') {
@@ -623,8 +413,14 @@
      * @param {CanvasRenderingContext2D} ctx Context to render on
      */
     _renderText: function(ctx) {
-      this._renderTextStroke(ctx);
-      this._renderTextFill(ctx);
+      if (this.paintFirst === 'stroke') {
+        this._renderTextStroke(ctx);
+        this._renderTextFill(ctx);
+      }
+      else {
+        this._renderTextFill(ctx);
+        this._renderTextStroke(ctx);
+      }
     },
 
     /**
@@ -750,7 +546,7 @@
         fabric.charWidthsCache[fontFamily] = { };
       }
       var cache = fabric.charWidthsCache[fontFamily],
-          cacheProp = decl.fontStyle.toLowerCase() + '_' + decl.fontWeight.toLowerCase();
+          cacheProp = decl.fontStyle.toLowerCase() + '_' + (decl.fontWeight + '').toLowerCase();
       if (!cache[cacheProp]) {
         cache[cacheProp] = { };
       }
@@ -774,87 +570,11 @@
     },
 
     /**
-     * get the reference, not a clone, of the style object for a given character
-     * @param {Number} lineIndex
-     * @param {Number} charIndex
-     * @return {Object} style object
-     */
-    _getStyleDeclaration: function(lineIndex, charIndex) {
-      var lineStyle = this.styles && this.styles[lineIndex];
-      if (!lineStyle) {
-        return null;
-      }
-      return lineStyle[charIndex];
-    },
-
-    /**
-     * return a new object that contains all the style property for a character
-     * the object returned is newly created
-     * @param {Number} lineIndex of the line where the character is
-     * @param {Number} charIndex position of the character on the line
-     * @return {Object} style object
-     */
-    getCompleteStyleDeclaration: function(lineIndex, charIndex) {
-      var style = this._getStyleDeclaration(lineIndex, charIndex) || { },
-          styleObject = { }, prop;
-      for (var i = 0; i < this._styleProperties.length; i++) {
-        prop = this._styleProperties[i];
-        styleObject[prop] = typeof style[prop] === 'undefined' ? this[prop] : style[prop];
-      }
-      return styleObject;
-    },
-
-    /**
-     * @param {Number} lineIndex
-     * @param {Number} charIndex
-     * @param {Object} style
-     * @private
-     */
-    _setStyleDeclaration: function(lineIndex, charIndex, style) {
-      this.styles[lineIndex][charIndex] = style;
-    },
-
-    /**
-     *
-     * @param {Number} lineIndex
-     * @param {Number} charIndex
-     * @private
-     */
-    _deleteStyleDeclaration: function(lineIndex, charIndex) {
-      delete this.styles[lineIndex][charIndex];
-    },
-
-    /**
-     * @param {Number} lineIndex
-     * @private
-     */
-    _getLineStyle: function(lineIndex) {
-      return this.styles[lineIndex];
-    },
-
-    /**
-     * @param {Number} lineIndex
-     * @param {Object} style
-     * @private
-     */
-    _setLineStyle: function(lineIndex, style) {
-      this.styles[lineIndex] = style;
-    },
-
-    /**
-     * @param {Number} lineIndex
-     * @private
-     */
-    _deleteLineStyle: function(lineIndex) {
-      delete this.styles[lineIndex];
-    },
-
-    /**
      * measure and return the width of a single character.
-     * possibly overridden to accomodate differente measure logic or
+     * possibly overridden to accommodate different measure logic or
      * to hook some external lib for character measurement
      * @private
-     * @param {String} char char to be measured
+     * @param {String} char to be measured
      * @param {Object} charStyle style of char to be measured
      * @param {String} [previousChar] previous char
      * @param {Object} [prevCharStyle] style of previous char
@@ -950,7 +670,7 @@
         prevGrapheme = grapheme;
       }
       // this latest bound box represent the last character of the line
-      // to simplify cursor handling in interactive mdoe.
+      // to simplify cursor handling in interactive mode.
       lineBounds[i] = {
         left: graphemeInfo ? graphemeInfo.left + graphemeInfo.width : 0,
         width: 0,
@@ -1051,9 +771,9 @@
      * @param {String} method Method name ("fillText" or "strokeText")
      */
     _renderTextCommon: function(ctx, method) {
-
-      var lineHeights = 0, left = this._getLeftOffset(), top = this._getTopOffset();
-
+      ctx.save();
+      var lineHeights = 0, left = this._getLeftOffset(), top = this._getTopOffset(),
+          offsets = this._applyPatternGradientTransform(ctx, method === 'fillText' ? this.fill : this.stroke);
       for (var i = 0, len = this._textLines.length; i < len; i++) {
         var heightOfLine = this.getHeightOfLine(i),
             maxHeight = heightOfLine / this.lineHeight,
@@ -1062,12 +782,13 @@
           method,
           ctx,
           this._textLines[i],
-          left + leftOffset,
-          top + lineHeights + maxHeight,
+          left + leftOffset - offsets.offsetX,
+          top + lineHeights + maxHeight - offsets.offsetY,
           i
         );
         lineHeights += heightOfLine;
       }
+      ctx.restore();
     },
 
     /**
@@ -1160,7 +881,7 @@
      * @param {String} method
      * @param {CanvasRenderingContext2D} ctx Context to render on
      * @param {Number} lineIndex
-     * @param {Number} i
+     * @param {Number} charIndex
      * @param {String} _char
      * @param {Number} left Left coordinate
      * @param {Number} top Top coordinate
@@ -1245,7 +966,7 @@
 
     /**
      * Measure a single line given its index. Used to calculate the initial
-     * text bouding box. The values are calculated and stored in __lineWidths cache.
+     * text bounding box. The values are calculated and stored in __lineWidths cache.
      * @private
      * @param {Number} lineIndex line number
      * @return {Number} Line width
@@ -1484,7 +1205,8 @@
       return callback(null);
     }
 
-    var parsedAttributes = fabric.parseAttributes(element, fabric.Text.ATTRIBUTE_NAMES);
+    var parsedAttributes = fabric.parseAttributes(element, fabric.Text.ATTRIBUTE_NAMES),
+        parsedAnchor = parsedAttributes.textAnchor || 'left';
     options = fabric.util.object.extend((options ? clone(options) : { }), parsedAttributes);
 
     options.top = options.top || 0;
@@ -1512,10 +1234,6 @@
       options.fontSize = fabric.Text.DEFAULT_SVG_FONT_SIZE;
     }
 
-    if (!options.originX) {
-      options.originX = 'left';
-    }
-
     var textContent = '';
 
     // The XML is not properly parsed in IE9 so a workaround to get
@@ -1535,28 +1253,26 @@
     textContent = textContent.replace(/^\s+|\s+$|\n+/g, '').replace(/\s+/g, ' ');
 
     var text = new fabric.Text(textContent, options),
-        textHeightScaleFactor = text.getHeight() / text.height,
+        textHeightScaleFactor = text.getScaledHeight() / text.height,
         lineHeightDiff = (text.height + text.strokeWidth) * text.lineHeight - text.height,
         scaledDiff = lineHeightDiff * textHeightScaleFactor,
-        textHeight = text.getHeight() + scaledDiff,
+        textHeight = text.getScaledHeight() + scaledDiff,
         offX = 0;
     /*
       Adjust positioning:
         x/y attributes in SVG correspond to the bottom-left corner of text bounding box
         fabric output by default at top, left.
     */
-    if (text.originX === 'center') {
-      offX = text.getWidth() / 2;
+    if (parsedAnchor === 'center') {
+      offX = text.getScaledWidth() / 2;
     }
-    if (text.originX === 'right') {
-      offX = text.getWidth();
+    if (parsedAnchor === 'right') {
+      offX = text.getScaledWidth();
     }
     text.set({
-      left: text.getLeft() - offX,
-      top: text.getTop() - (textHeight - text.fontSize * (0.18 + text._fontSizeFraction)) / text.lineHeight
+      left: text.left - offX,
+      top: text.top - (textHeight - text.fontSize * (0.18 + text._fontSizeFraction)) / text.lineHeight
     });
-    text.originX = 'left';
-    text.originY = 'top';
     callback(text);
   };
   /* _FROM_SVG_END_ */
@@ -1572,6 +1288,6 @@
     return fabric.Object._fromObject('Text', object, callback, 'text');
   };
 
-  fabric.util.createAccessors(fabric.Text);
+  fabric.util.createAccessors && fabric.util.createAccessors(fabric.Text);
 
 })(typeof exports !== 'undefined' ? exports : this);

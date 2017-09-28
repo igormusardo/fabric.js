@@ -41,6 +41,7 @@
     initialize: function(el, options) {
       options || (options = { });
       this.renderAndResetBound = this.renderAndReset.bind(this);
+      this.requestRenderAllBound = this.requestRenderAll.bind(this);
       this._initStatic(el, options);
     },
 
@@ -98,9 +99,12 @@
     stateful: false,
 
     /**
-     * Indicates whether {@link fabric.Collection.add}, {@link fabric.Collection.insertAt} and {@link fabric.Collection.remove} should also re-render canvas.
-     * Disabling this option could give a great performance boost when adding/removing a lot of objects to/from canvas at once
-     * (followed by a manual rendering after addition/deletion)
+     * Indicates whether {@link fabric.Collection.add}, {@link fabric.Collection.insertAt} and {@link fabric.Collection.remove},
+     * {@link fabric.StaticCanvas.moveTo}, {@link fabric.StaticCanvas.clear} and many more, should also re-render canvas.
+     * Disabling this option will not give a performance boost when adding/removing a lot of objects to/from canvas at once
+     * since the renders are quequed and executed one per frame.
+     * Disabling is suggested anyway and managing the renders of the app manually is not a big effort ( canvas.requestRenderAll() )
+     * Left default to true to do not break documentation and old app, fiddles.
      * @type Boolean
      * @default
      */
@@ -109,6 +113,7 @@
     /**
      * Function that determines clipping of entire canvas area
      * Being passed context as first argument. See clipping canvas area in {@link https://github.com/kangax/fabric.js/wiki/FAQ}
+     * @deprecated since 2.0.0
      * @type Function
      * @default
      */
@@ -201,7 +206,7 @@
      * @param {Object} [options] Options object
      */
     _initStatic: function(el, options) {
-      var cb = fabric.StaticCanvas.prototype.renderAll.bind(this);
+      var cb = this.requestRenderAllBound;
       this._objects = [];
       this._createLowerCanvas(el);
       this._initOptions(options);
@@ -470,13 +475,13 @@
     /**
      * @private
      */
-    _createCanvasElement: function(canvasEl) {
-      var element = fabric.util.createCanvasElement(canvasEl);
-      if (!element.style) {
-        element.style = { };
-      }
+    _createCanvasElement: function() {
+      var element = fabric.util.createCanvasElement();
       if (!element) {
         throw CANVAS_INIT_ERROR;
+      }
+      if (!element.style) {
+        element.style = { };
       }
       if (typeof element.getContext === 'undefined') {
         throw CANVAS_INIT_ERROR;
@@ -513,7 +518,13 @@
      * @param {HTMLElement} [canvasEl]
      */
     _createLowerCanvas: function (canvasEl) {
-      this.lowerCanvasEl = fabric.util.getById(canvasEl) || this._createCanvasElement(canvasEl);
+      // canvasEl === 'HTMLCanvasElement' does not work on jsdom/node
+      if (canvasEl && canvasEl.getContext) {
+        this.lowerCanvasEl = canvasEl;
+      }
+      else {
+        this.lowerCanvasEl = fabric.util.getById(canvasEl) || this._createCanvasElement();
+      }
 
       fabric.util.addClass(this.lowerCanvasEl, 'lower-canvas');
 
@@ -599,7 +610,7 @@
       this.calcOffset();
 
       if (!options.cssOnly) {
-        this.renderAll();
+        this.requestRenderAll();
       }
 
       return this;
@@ -666,17 +677,17 @@
      * @chainable true
      */
     setViewportTransform: function (vpt) {
-      var activeGroup = this._activeGroup, object, ingoreVpt = false, skipAbsolute = true;
+      var activeObject = this._activeObject, object, ignoreVpt = false, skipAbsolute = true, i, len;
       this.viewportTransform = vpt;
-      for (var i = 0, len = this._objects.length; i < len; i++) {
+      for (i = 0, len = this._objects.length; i < len; i++) {
         object = this._objects[i];
-        object.group || object.setCoords(ingoreVpt, skipAbsolute);
+        object.group || object.setCoords(ignoreVpt, skipAbsolute);
       }
-      if (activeGroup) {
-        activeGroup.setCoords(ingoreVpt, skipAbsolute);
+      if (activeObject && activeObject.type === 'activeSelection') {
+        activeObject.setCoords(ignoreVpt, skipAbsolute);
       }
       this.calcViewportBoundaries();
-      this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -803,7 +814,7 @@
       }
       this.clearContext(this.contextContainer);
       this.fire('canvas:cleared');
-      this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -825,8 +836,8 @@
      * @chainable
      */
     renderAndReset: function() {
+      this.isRendering = 0;
       this.renderAll();
-      this.isRendering = false;
     },
 
     /**
@@ -837,8 +848,7 @@
      */
     requestRenderAll: function () {
       if (!this.isRendering) {
-        this.isRendering = true;
-        fabric.util.requestAnimFrame(this.renderAndResetBound);
+        this.isRendering = fabric.util.requestAnimFrame(this.renderAndResetBound);
       }
       return this;
     },
@@ -851,7 +861,7 @@
      * @chainable
      */
     calcViewportBoundaries: function() {
-      var points = { }, width = this.getWidth(), height = this.getHeight(),
+      var points = { }, width = this.width, height = this.height,
           iVpt = invertTransform(this.viewportTransform);
       points.tl = transformPoint({ x: 0, y: 0 }, iVpt);
       points.br = transformPoint({ x: width, y: height }, iVpt);
@@ -869,6 +879,10 @@
      * @chainable
      */
     renderCanvas: function(ctx, objects) {
+      if (this.isRendering) {
+        fabric.util.cancelAnimFrame(this.isRendering);
+        this.isRendering = 0;
+      }
       this.calcViewportBoundaries();
       this.clearContext(ctx);
       this.fire('before:render');
@@ -901,7 +915,8 @@
      * @param {Array} objects to render
      */
     _renderObjects: function(ctx, objects) {
-      for (var i = 0, length = objects.length; i < length; ++i) {
+      var i, len;
+      for (i = 0, len = objects.length; i < len; ++i) {
         objects[i] && objects[i].render(ctx);
       }
     },
@@ -958,8 +973,8 @@
      */
     getCenter: function () {
       return {
-        top: this.getHeight() / 2,
-        left: this.getWidth() / 2
+        top: this.height / 2,
+        left: this.width / 2
       };
     },
 
@@ -1056,7 +1071,7 @@
      */
     _centerObject: function(object, center) {
       object.setPositionByOrigin(center, 'center', 'center');
-      this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -1093,6 +1108,7 @@
     _toObjectMethod: function (methodName, propertiesToInclude) {
 
       var data = {
+        version: fabric.version,
         objects: this._toObjects(methodName, propertiesToInclude)
       };
 
@@ -1136,7 +1152,7 @@
      * @private
      */
     __serializeBgOverlay: function(methodName, propertiesToInclude) {
-      var data = { };
+      var data = { }, bgImage = this.backgroundImage, overlay = this.overlayImage;
 
       if (this.backgroundColor) {
         data.background = this.backgroundColor.toObject
@@ -1149,11 +1165,11 @@
           ? this.overlayColor.toObject(propertiesToInclude)
           : this.overlayColor;
       }
-      if (this.backgroundImage) {
-        data.backgroundImage = this._toObject(this.backgroundImage, methodName, propertiesToInclude);
+      if (bgImage && !bgImage.excludeFromExport) {
+        data.backgroundImage = this._toObject(bgImage, methodName, propertiesToInclude);
       }
-      if (this.overlayImage) {
-        data.overlayImage = this._toObject(this.overlayImage, methodName, propertiesToInclude);
+      if (overlay && !overlay.excludeFromExport) {
+        data.overlayImage = this._toObject(overlay, methodName, propertiesToInclude);
       }
 
       return data;
@@ -1235,8 +1251,8 @@
       }
       markup.push(
         '<?xml version="1.0" encoding="', (options.encoding || 'UTF-8'), '" standalone="no" ?>\n',
-          '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ',
-            '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
+        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ',
+        '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n'
       );
     },
 
@@ -1269,17 +1285,17 @@
 
       markup.push(
         '<svg ',
-          'xmlns="http://www.w3.org/2000/svg" ',
-          'xmlns:xlink="http://www.w3.org/1999/xlink" ',
-          'version="1.1" ',
-          'width="', width, '" ',
-          'height="', height, '" ',
-          viewBox,
-          'xml:space="preserve">\n',
+        'xmlns="http://www.w3.org/2000/svg" ',
+        'xmlns:xlink="http://www.w3.org/1999/xlink" ',
+        'version="1.1" ',
+        'width="', width, '" ',
+        'height="', height, '" ',
+        viewBox,
+        'xml:space="preserve">\n',
         '<desc>Created with Fabric.js ', fabric.version, '</desc>\n',
         '<defs>\n',
-          this.createSVGFontFacesMarkup(),
-          this.createSVGRefElementsMarkup(),
+        this.createSVGFontFacesMarkup(),
+        this.createSVGRefElementsMarkup(),
         '</defs>\n'
       );
     },
@@ -1308,10 +1324,10 @@
      */
     createSVGFontFacesMarkup: function() {
       var markup = '', fontList = { }, obj, fontFamily,
-          style, row, rowIndex, _char, charIndex,
+          style, row, rowIndex, _char, charIndex, i, len,
           fontPaths = fabric.fontPaths, objects = this.getObjects();
 
-      for (var i = 0, len = objects.length; i < len; i++) {
+      for (i = 0, len = objects.length; i < len; i++) {
         obj = objects[i];
         fontFamily = obj.fontFamily;
         if (obj.type.indexOf('text') === -1 || fontList[fontFamily] || !fontPaths[fontFamily]) {
@@ -1360,8 +1376,8 @@
      * @private
      */
     _setSVGObjects: function(markup, reviver) {
-      var instance;
-      for (var i = 0, objects = this.getObjects(), len = objects.length; i < len; i++) {
+      var instance, i, len, objects = this.getObjects();
+      for (i = 0, len = objects.length; i < len; i++) {
         instance = objects[i];
         if (instance.excludeFromExport) {
           continue;
@@ -1371,7 +1387,6 @@
     },
 
     /**
-     * push single object svg representation in the markup
      * @private
      */
     _setSVGObject: function(markup, instance, reviver) {
@@ -1399,25 +1414,25 @@
         var repeat = filler.repeat;
         markup.push(
           '<rect transform="translate(', this.width / 2, ',', this.height / 2, ')"',
-            ' x="', filler.offsetX - this.width / 2, '" y="', filler.offsetY - this.height / 2, '" ',
-            'width="',
-              (repeat === 'repeat-y' || repeat === 'no-repeat'
-                ? filler.source.width
-                : this.width),
-            '" height="',
-              (repeat === 'repeat-x' || repeat === 'no-repeat'
-                ? filler.source.height
-                : this.height),
-            '" fill="url(#SVGID_' + filler.id + ')"',
+          ' x="', filler.offsetX - this.width / 2, '" y="', filler.offsetY - this.height / 2, '" ',
+          'width="',
+          (repeat === 'repeat-y' || repeat === 'no-repeat'
+            ? filler.source.width
+            : this.width),
+          '" height="',
+          (repeat === 'repeat-x' || repeat === 'no-repeat'
+            ? filler.source.height
+            : this.height),
+          '" fill="url(#SVGID_' + filler.id + ')"',
           '></rect>\n'
         );
       }
       else {
         markup.push(
           '<rect x="0" y="0" ',
-            'width="', this.width,
-            '" height="', this.height,
-            '" fill="', this[property], '"',
+          'width="', this.width,
+          '" height="', this.height,
+          '" fill="', this[property], '"',
           '></rect>\n'
         );
       }
@@ -1435,10 +1450,10 @@
       if (!object) {
         return this;
       }
-      var activeGroup = this._activeGroup,
+      var activeSelection = this._activeObject,
           i, obj, objs;
-      if (object === activeGroup) {
-        objs = activeGroup._objects;
+      if (object === activeSelection && object.type === 'activeSelection') {
+        objs = activeSelection._objects;
         for (i = objs.length; i--;) {
           obj = objs[i];
           removeFromArray(this._objects, obj);
@@ -1449,7 +1464,7 @@
         removeFromArray(this._objects, object);
         this._objects.unshift(object);
       }
-      this.renderAll && this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -1464,10 +1479,10 @@
       if (!object) {
         return this;
       }
-      var activeGroup = this._activeGroup,
+      var activeSelection = this._activeObject,
           i, obj, objs;
-      if (object === activeGroup) {
-        objs = activeGroup._objects;
+      if (object === activeSelection && object.type === 'activeSelection') {
+        objs = activeSelection._objects;
         for (i = 0; i < objs.length; i++) {
           obj = objs[i];
           removeFromArray(this._objects, obj);
@@ -1478,12 +1493,16 @@
         removeFromArray(this._objects, object);
         this._objects.push(object);
       }
-      this.renderAll && this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
     /**
      * Moves an object or a selection down in stack of drawn objects
+     * An optional paramter, intersecting allowes to move the object in behind
+     * the first intersecting object. Where intersection is calculated with
+     * bounding box. If no intersection is found, there will not be change in the
+     * stack.
      * @param {fabric.Object} object Object to send
      * @param {Boolean} [intersecting] If `true`, send object behind next lower intersecting object
      * @return {fabric.Canvas} thisArg
@@ -1493,19 +1512,20 @@
       if (!object) {
         return this;
       }
-      var activeGroup = this._activeGroup,
-          i, obj, idx, newIdx, objs;
+      var activeSelection = this._activeObject,
+          i, obj, idx, newIdx, objs, objsMoved = 0;
 
-      if (object === activeGroup) {
-        objs = activeGroup._objects;
+      if (object === activeSelection && object.type === 'activeSelection') {
+        objs = activeSelection._objects;
         for (i = 0; i < objs.length; i++) {
           obj = objs[i];
           idx = this._objects.indexOf(obj);
-          if (idx !== 0) {
+          if (idx > 0 + objsMoved) {
             newIdx = idx - 1;
             removeFromArray(this._objects, obj);
             this._objects.splice(newIdx, 0, obj);
           }
+          objsMoved++;
         }
       }
       else {
@@ -1517,7 +1537,7 @@
           this._objects.splice(newIdx, 0, object);
         }
       }
-      this.renderAll && this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -1525,13 +1545,13 @@
      * @private
      */
     _findNewLowerIndex: function(object, idx, intersecting) {
-      var newIdx;
+      var newIdx, i;
 
       if (intersecting) {
         newIdx = idx;
 
         // traverse down the stack looking for the nearest intersecting object
-        for (var i = idx - 1; i >= 0; --i) {
+        for (i = idx - 1; i >= 0; --i) {
 
           var isIntersecting = object.intersectsWithObject(this._objects[i]) ||
                                object.isContainedWithinObject(this._objects[i]) ||
@@ -1552,6 +1572,10 @@
 
     /**
      * Moves an object or a selection up in stack of drawn objects
+     * An optional paramter, intersecting allowes to move the object in front
+     * of the first intersecting object. Where intersection is calculated with
+     * bounding box. If no intersection is found, there will not be change in the
+     * stack.
      * @param {fabric.Object} object Object to send
      * @param {Boolean} [intersecting] If `true`, send object in front of next upper intersecting object
      * @return {fabric.Canvas} thisArg
@@ -1561,19 +1585,20 @@
       if (!object) {
         return this;
       }
-      var activeGroup = this._activeGroup,
-          i, obj, idx, newIdx, objs;
+      var activeSelection = this._activeObject,
+          i, obj, idx, newIdx, objs, objsMoved = 0;
 
-      if (object === activeGroup) {
-        objs = activeGroup._objects;
+      if (object === activeSelection && object.type === 'activeSelection') {
+        objs = activeSelection._objects;
         for (i = objs.length; i--;) {
           obj = objs[i];
           idx = this._objects.indexOf(obj);
-          if (idx !== this._objects.length - 1) {
+          if (idx < this._objects.length - 1 - objsMoved) {
             newIdx = idx + 1;
             removeFromArray(this._objects, obj);
             this._objects.splice(newIdx, 0, obj);
           }
+          objsMoved++;
         }
       }
       else {
@@ -1585,7 +1610,7 @@
           this._objects.splice(newIdx, 0, object);
         }
       }
-      this.renderAll && this.renderAll();
+      this.renderOnAddRemove && this.requestRenderAll();
       return this;
     },
 
@@ -1593,13 +1618,13 @@
      * @private
      */
     _findNewUpperIndex: function(object, idx, intersecting) {
-      var newIdx;
+      var newIdx, i, len;
 
       if (intersecting) {
         newIdx = idx;
 
         // traverse up the stack looking for the nearest intersecting object
-        for (var i = idx + 1; i < this._objects.length; ++i) {
+        for (i = idx + 1, len = this._objects.length; i < len; ++i) {
 
           var isIntersecting = object.intersectsWithObject(this._objects[i]) ||
                                object.isContainedWithinObject(this._objects[i]) ||
@@ -1628,7 +1653,7 @@
     moveTo: function (object, index) {
       removeFromArray(this._objects, object);
       this._objects.splice(index, 0, object);
-      return this.renderAll && this.renderAll();
+      return this.renderOnAddRemove && this.requestRenderAll();
     },
 
     /**

@@ -45,7 +45,7 @@ Fabric.js allows you to easily create simple shapes like rectangles, circles, tr
 
 ### Goals
 
-- Unit tested (4000+ assertion, 800+ tests at the moment, 75%+ coverage)
+- Unit tested (4600+ assertion, 940+ tests at the moment, 75%+ coverage)
 - Modular (~60 small ["classes", modules, mixins](http://fabricjs.com/docs/))
 - Cross-browser
 - [Fast](https://github.com/kangax/fabric.js/wiki/Focus-on-speed)
@@ -74,6 +74,7 @@ Fabric.js started as a foundation for design editor on [printio.ru](http://print
     $ bower install fabric
 
 <h3 id="npm-install">Install with npm</h3>
+
 To install Fabric.js using npm, you must first manually [install Cairo](http://cairographics.org/download/) on your system. Cairo is a system library which powers node-canvas, which Fabric.js relies on. When the installation is complete, you may need to restart your terminal or command prompt before installing fabric.
 
     $ npm install fabric --save
@@ -133,11 +134,11 @@ To install Fabric.js using npm, you must first manually [install Cairo](http://c
 
 6. Lint source code (prerequisite: `npm -g install jshint`)
 
-        $ jshint src
+        $ npm run lint_tests
 
 7. Ensure code guidelines are met (prerequisite: `npm -g install jscs`)
 
-        $ jscs src
+        $ npm run lint
 
 <h3 id="fabric-building">Testing</h3>
 
@@ -254,11 +255,12 @@ Get help in Fabric's IRC channel — irc://irc.freenode.net/#fabric.js
 
 ### Credits
 
+- [Andrea Bogazzi](https://twitter.com/AndreaBogazzi) for help with bugs, new features, documentation, github issues
 - Ernest Delgado for the original idea of [manipulating images on canvas](http://www.ernestdelgado.com/archive/canvas/)
 - [Maxim "hakunin" Chernyak](http://twitter.com/hakunin) for ideas, and help with various parts of the library throughout its life
 - [Sergey Nisnevich](http://nisnya.com) for help with geometry logic
 - [Stefan Kienzle](https://twitter.com/kienzle_s) for help with bugs, features, documentation, github issues
-- [Andrea Bogazzi](https://twitter.com/AndreaBogazzi) for help with bugs, new features, documentation, github issues
+- [Shutterstock](http://www.shutterstock.com) for the time and resources invested in using and improving fabric.js
 - [And all the other GitHub contributors](https://github.com/kangax/fabric.js/graphs/contributors)
 
 ### MIT License

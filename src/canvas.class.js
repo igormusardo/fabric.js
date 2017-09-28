@@ -17,14 +17,16 @@
    * @see {@link fabric.Canvas#initialize} for constructor definition
    *
    * @fires object:added
+   * @fires object:removed
    * @fires object:modified
    * @fires object:rotating
    * @fires object:scaling
    * @fires object:moving
-   * @fires object:selected
+   * @fires object:selected this event is deprecated. use selection:created
    *
    * @fires before:selection:cleared
    * @fires selection:cleared
+   * @fires selection:updated
    * @fires selection:created
    *
    * @fires path:created
@@ -33,7 +35,7 @@
    * @fires mouse:up
    * @fires mouse:over
    * @fires mouse:out
-   * @fires mouse:doubleclick
+   * @fires mouse:dblclick
    *
    */
   fabric.Canvas = fabric.util.createClass(fabric.StaticCanvas, /** @lends fabric.Canvas.prototype */ {
@@ -89,7 +91,7 @@
     centeredRotation:       false,
 
     /**
-     * Indicates which key enable centered Transfrom
+     * Indicates which key enable centered Transform
      * values: 'altKey', 'shiftKey', 'ctrlKey'.
      * If `null` or 'none' or any other string that is not a modifier key
      * feature is disabled feature disabled.
@@ -211,6 +213,14 @@
     rotationCursor:         'crosshair',
 
     /**
+     * Cursor value used for disabled elements ( corners with disabled action )
+     * @type String
+     * @since 2.0.0
+     * @default
+     */
+    notAllowedCursor:         'not-allowed',
+
+    /**
      * Default element class that's given to wrapper (div) element of canvas
      * @type String
      * @default
@@ -320,25 +330,25 @@
      * @return {Array} objects to render immediately and pushes the other in the activeGroup.
      */
     _chooseObjectsToRender: function() {
-      var activeGroup = this.getActiveGroup(),
-          activeObject = this.getActiveObject(),
-          object, objsToRender = [], activeGroupObjects = [];
+      var activeObjects = this.getActiveObjects(),
+          object, objsToRender, activeGroupObjects;
 
-      if ((activeGroup || activeObject) && !this.preserveObjectStacking) {
+      if (activeObjects.length > 0 && !this.preserveObjectStacking) {
+        objsToRender = [];
+        activeGroupObjects = [];
         for (var i = 0, length = this._objects.length; i < length; i++) {
           object = this._objects[i];
-          if ((!activeGroup || !activeGroup.contains(object)) && object !== activeObject) {
+          if (activeObjects.indexOf(object) === -1 ) {
             objsToRender.push(object);
           }
           else {
             activeGroupObjects.push(object);
           }
         }
-        if (activeGroup) {
-          activeGroup._set('_objects', activeGroupObjects);
-          objsToRender.push(activeGroup);
+        if (activeObjects.length > 1) {
+          this._activeObject._objects = activeGroupObjects;
         }
-        activeObject && objsToRender.push(activeObject);
+        objsToRender.push.apply(objsToRender, activeGroupObjects);
       }
       else {
         objsToRender = this._objects;
@@ -441,7 +451,7 @@
           pointer = point || this.getPointer(e, ignoreZoom),
           xy;
 
-      if (target.group && target.group === this.getActiveGroup()) {
+      if (target.group && target.group === this._activeObject && target.group.type === 'activeSelection') {
         xy = this._normalizePointer(target.group, pointer);
       }
       else {
@@ -470,9 +480,7 @@
      * @return {Boolean}
      */
     isTargetTransparent: function (target, x, y) {
-      var hasBorders = target.hasBorders,
-          transparentCorners = target.transparentCorners,
-          ctx = this.contextCache,
+      var ctx = this.contextCache,
           originalColor = target.selectionBackgroundColor;
 
       target.hasBorders = target.transparentCorners = false;
@@ -483,10 +491,11 @@
       target.render(ctx);
       ctx.restore();
 
-      target.active && target._renderControls(ctx);
+      target === this._activeObject && target._renderControls(ctx, {
+        hasBorders: false,
+        transparentCorners: false
+      });
 
-      target.hasBorders = hasBorders;
-      target.transparentCorners = transparentCorners;
       target.selectionBackgroundColor = originalColor;
 
       var isTransparent = fabric.util.isTransparent(
@@ -503,16 +512,16 @@
      * @param {fabric.Object} target
      */
     _shouldClearSelection: function (e, target) {
-      var activeGroup = this.getActiveGroup(),
-          activeObject = this.getActiveObject();
-
+      var activeObjects = this.getActiveObjects(),
+          activeObject = this._activeObject;
       return (
         !target
         ||
         (target &&
-          activeGroup &&
-          !activeGroup.contains(target) &&
-          activeGroup !== target &&
+          activeObject &&
+          activeObjects.length > 1 &&
+          activeObjects.indexOf(target) === -1 &&
+          activeObject !== target &&
           !e[this.selectionKey])
         ||
         (target && !target.evented)
@@ -835,14 +844,16 @@
 
       if (lockScalingFlip && scaleX <= 0 && scaleX < target.scaleX) {
         forbidScalingX = true;
+        localMouse.x = 0;
       }
 
       if (lockScalingFlip && scaleY <= 0 && scaleY < target.scaleY) {
         forbidScalingY = true;
+        localMouse.y = 0;
       }
 
       if (by === 'equally' && !lockScalingX && !lockScalingY) {
-        forbidScalingX || forbidScalingY || (scaled = this._scaleObjectEqually(localMouse, target, transform, _dim));
+        scaled = this._scaleObjectEqually(localMouse, target, transform, _dim);
       }
       else if (!by) {
         forbidScalingX || lockScalingX || (target.set('scaleX', scaleX) && (scaled = scaled || changeX));
@@ -869,12 +880,13 @@
       var dist = localMouse.y + localMouse.x,
           lastDist = _dim.y * transform.original.scaleY / target.scaleY +
                      _dim.x * transform.original.scaleX / target.scaleX,
-          scaled;
+          scaled, signX = localMouse.x < 0 ? -1 : 1,
+          signY = localMouse.y < 0 ? -1 : 1;
 
       // We use transform.scaleX/Y instead of target.scaleX/Y
       // because the object may have a min scale and we'll loose the proportions
-      transform.newScaleX = transform.original.scaleX * dist / lastDist;
-      transform.newScaleY = transform.original.scaleY * dist / lastDist;
+      transform.newScaleX = signX * Math.abs(transform.original.scaleX * dist / lastDist);
+      transform.newScaleY = signY * Math.abs(transform.original.scaleY * dist / lastDist);
       scaled = transform.newScaleX !== target.scaleX || transform.newScaleY !== target.scaleY;
       target.set('scaleX', transform.newScaleX);
       target.set('scaleY', transform.newScaleY);
@@ -975,7 +987,7 @@
       var lastAngle = atan2(t.ey - t.top, t.ex - t.left),
           curAngle = atan2(y - t.top, x - t.left),
           angle = radiansToDegrees(curAngle - lastAngle + t.theta),
-          hasRoated = true;
+          hasRotated = true;
 
       if (t.target.snapAngle > 0) {
         var snapAngle  = t.target.snapAngle,
@@ -998,13 +1010,13 @@
       angle %= 360;
 
       if (t.target.angle === angle) {
-        hasRoated = false;
+        hasRotated = false;
       }
       else {
         t.target.angle = angle;
       }
 
-      return hasRoated;
+      return hasRotated;
     },
 
     /**
@@ -1025,7 +1037,7 @@
       target.scaleY = 1;
       target.skewX = 0;
       target.skewY = 0;
-      target.setAngle(0);
+      target.rotate(0);
     },
 
     /**
@@ -1096,64 +1108,39 @@
 
       var ignoreZoom = true,
           pointer = this.getPointer(e, ignoreZoom),
-          activeGroup = this.getActiveGroup(),
-          activeObject = this.getActiveObject(),
-          activeTarget;
+          activeObject = this._activeObject,
+          aObjects = this.getActiveObjects(),
+          activeTarget, activeTargetSubs;
+
       // first check current group (if one exists)
       // active group does not check sub targets like normal groups.
       // if active group just exits.
       this.targets = [];
-      if (activeGroup && !skipGroup && activeGroup === this._searchPossibleTargets([activeGroup], pointer)) {
-        this._fireOverOutEvents(activeGroup, e);
-        return activeGroup;
-      }
-      // if we hit the corner of an activeObject, let's return that.
-      if (activeObject && activeObject._findTargetCorner(pointer)) {
-        this._fireOverOutEvents(activeObject, e);
+
+      if (aObjects.length > 1 && !skipGroup && activeObject === this._searchPossibleTargets([activeObject], pointer)) {
         return activeObject;
       }
-      if (activeObject && activeObject === this._searchPossibleTargets([activeObject], pointer)) {
+      // if we hit the corner of an activeObject, let's return that.
+      if (aObjects.length === 1 && activeObject._findTargetCorner(pointer)) {
+        return activeObject;
+      }
+      if (aObjects.length === 1 &&
+        activeObject === this._searchPossibleTargets([activeObject], pointer)) {
         if (!this.preserveObjectStacking) {
-          this._fireOverOutEvents(activeObject, e);
           return activeObject;
         }
         else {
           activeTarget = activeObject;
+          activeTargetSubs = this.targets;
+          this.targets = [];
         }
       }
-
       var target = this._searchPossibleTargets(this._objects, pointer);
       if (e[this.altSelectionKey] && target && activeTarget && target !== activeTarget) {
         target = activeTarget;
+        this.targets = activeTargetSubs;
       }
-      this._fireOverOutEvents(target, e);
       return target;
-    },
-
-    /**
-     * @private
-     */
-    _fireOverOutEvents: function(target, e) {
-      var overOpt, outOpt, hoveredTarget = this._hoveredTarget;
-      if (hoveredTarget !== target) {
-        overOpt = { e: e, target: target, previousTarget: this._hoveredTarget };
-        outOpt = { e: e, target: this._hoveredTarget, nextTarget: target };
-        this._hoveredTarget = target;
-      }
-      if (target) {
-        if (hoveredTarget !== target) {
-          if (hoveredTarget) {
-            this.fire('mouse:out', outOpt);
-            hoveredTarget.fire('mouseout', outOpt);
-          }
-          this.fire('mouse:over', overOpt);
-          target.fire('mouseover', overOpt);
-        }
-      }
-      else if (hoveredTarget) {
-        this.fire('mouse:out', outOpt);
-        hoveredTarget.fire('mouseout', outOpt);
-      }
     },
 
     /**
@@ -1184,7 +1171,7 @@
       // Cache all targets where their bounding box contains point.
       var target, i = objects.length, normalizedPointer, subTarget;
       // Do not check for currently grouped objects, since we check the parent group itself.
-      // untill we call this function specifically to search inside the activeGroup
+      // until we call this function specifically to search inside the activeGroup
       while (i--) {
         if (this._checkTarget(pointer, objects[i])) {
           target = objects[i];
@@ -1312,8 +1299,8 @@
         'class': this.containerClass
       });
       fabric.util.setStyle(this.wrapperEl, {
-        width: this.getWidth() + 'px',
-        height: this.getHeight() + 'px',
+        width: this.width + 'px',
+        height: this.height + 'px',
         position: 'relative'
       });
       fabric.util.makeElementUnselectable(this.wrapperEl);
@@ -1324,8 +1311,8 @@
      * @param {HTMLElement} element canvas element to apply styles on
      */
     _applyCanvasStyle: function (element) {
-      var width = this.getWidth() || element.width,
-          height = this.getHeight() || element.height;
+      var width = this.width || element.width,
+          height = this.height || element.height;
 
       fabric.util.setStyle(element, {
         position: 'absolute',
@@ -1341,7 +1328,7 @@
     },
 
     /**
-     * Copys the the entire inline style from one element (fromEl) to another (toEl)
+     * Copy the entire inline style from one element (fromEl) to another (toEl)
      * @private
      * @param {Element} fromEl Element style is copied from
      * @param {Element} toEl Element copied style is applied to
@@ -1367,41 +1354,6 @@
     },
 
     /**
-     * @private
-     * @param {Object} object
-     */
-    _setActiveObject: function(object) {
-      var obj = this._activeObject;
-      if (obj) {
-        obj.set('active', false);
-        if (object !== obj && obj.onDeselect && typeof obj.onDeselect === 'function') {
-          obj.onDeselect();
-        }
-      }
-      this._activeObject = object;
-      object.set('active', true);
-    },
-
-    /**
-     * Sets given object as the only active object on canvas
-     * @param {fabric.Object} object Object to set as an active one
-     * @param {Event} [e] Event (passed along when firing "object:selected")
-     * @return {fabric.Canvas} thisArg
-     * @chainable
-     */
-    setActiveObject: function (object, e) {
-      var currentActiveObject = this.getActiveObject();
-      if (currentActiveObject && currentActiveObject !== object) {
-        currentActiveObject.fire('deselected', { e: e });
-      }
-      this._setActiveObject(object);
-      this.fire('object:selected', { target: object, e: e });
-      object.fire('selected', { e: e });
-      this.requestRenderAll();
-      return this;
-    },
-
-    /**
      * Returns currently active object
      * @return {fabric.Object} active object
      */
@@ -1410,12 +1362,29 @@
     },
 
     /**
+     * Returns an array with the current selected objects
+     * @return {fabric.Object} active object
+     */
+    getActiveObjects: function () {
+      var active = this._activeObject;
+      if (active) {
+        if (active.type === 'activeSelection' && active._objects) {
+          return active._objects.slice(0);
+        }
+        else {
+          return [active];
+        }
+      }
+      return [];
+    },
+
+    /**
      * @private
      * @param {fabric.Object} obj Object that was removed
      */
     _onObjectRemoved: function(obj) {
       // removing active object should fire "selection:cleared" events
-      if (this.getActiveObject() === obj) {
+      if (obj === this._activeObject) {
         this.fire('before:selection:cleared', { target: obj });
         this._discardActiveObject();
         this.fire('selection:cleared', { target: obj });
@@ -1429,21 +1398,98 @@
 
     /**
      * @private
+     * Compares the old activeObject with the current one and fires correct events
+     * @param {fabric.Object} obj old activeObject
      */
-    _discardActiveObject: function() {
+    _fireSelectionEvents: function(oldObjects, e) {
+      var somethingChanged = false, objects = this.getActiveObjects(),
+          added = [], removed = [], opt = { e: e };
+      oldObjects.forEach(function(oldObject) {
+        if (objects.indexOf(oldObject) === -1) {
+          somethingChanged = true;
+          oldObject.fire('deselected', opt);
+          removed.push(oldObject);
+        }
+      });
+      objects.forEach(function(object) {
+        if (oldObjects.indexOf(object) === -1) {
+          somethingChanged = true;
+          object.fire('selected', opt);
+          added.push(object);
+        }
+      });
+      if (oldObjects.length > 0 && objects.length > 0) {
+        opt.selected = added;
+        opt.deselected = removed;
+        somethingChanged && this.fire('selection:updated', opt);
+      }
+      else if (objects.length > 0) {
+        if (objects.length === 1) {
+          opt.target = added[0];
+          this.fire('object:selected', opt);
+        }
+        opt.target = undefined;
+        opt.selected = added;
+        this.fire('selection:created', opt);
+      }
+      else if (oldObjects.length > 0) {
+        opt.deselected = removed;
+        this.fire('selection:cleared', opt);
+      }
+    },
+
+    /**
+     * Sets given object as the only active object on canvas
+     * @param {fabric.Object} object Object to set as an active one
+     * @param {Event} [e] Event (passed along when firing "object:selected")
+     * @return {fabric.Canvas} thisArg
+     * @chainable
+     */
+    setActiveObject: function (object, e) {
+      var currentActives = this.getActiveObjects();
+      this._setActiveObject(object, e);
+      this._fireSelectionEvents(currentActives, e);
+      return this;
+    },
+
+    /**
+     * @private
+     * @param {Object} object to set as active
+     * @param {Event} [e] Event (passed along when firing "object:selected")
+     * @return {Boolean} true if the selection happened
+     */
+    _setActiveObject: function(object, e) {
+      if (this._activeObject === object) {
+        return false;
+      }
+      if (!this._discardActiveObject(e, object)) {
+        return false;
+      }
+      if (object.onSelect({ e: e })) {
+        return false;
+      }
+      this._activeObject = object;
+      return true;
+    },
+
+    /**
+     * @private
+     */
+    _discardActiveObject: function(e, object) {
       var obj = this._activeObject;
       if (obj) {
-        obj.set('active', false);
-        if (obj.onDeselect && typeof obj.onDeselect === 'function') {
-          obj.onDeselect();
+        // onDeselect return TRUE to cancel selection;
+        if (obj.onDeselect({ e: e, object: object })) {
+          return false;
         }
+        this._activeObject = null;
       }
-      this._activeObject = null;
+      return true;
     },
 
     /**
      * Discards currently active object and fire events. If the function is called by fabric
-     * as a consequence of a mouse event, the event is passed as a parmater and
+     * as a consequence of a mouse event, the event is passed as a parameter and
      * sent to the fire function for the custom events. When used as a method the
      * e param does not have any application.
      * @param {event} e
@@ -1451,121 +1497,12 @@
      * @chainable
      */
     discardActiveObject: function (e) {
-      var activeObject = this._activeObject;
-      if (activeObject) {
-        this.fire('before:selection:cleared', { target: activeObject, e: e });
-        this._discardActiveObject();
-        this.fire('selection:cleared', { e: e });
-        activeObject.fire('deselected', { e: e });
+      var currentActives = this.getActiveObjects();
+      if (currentActives.length) {
+        this.fire('before:selection:cleared', { target: currentActives[0], e: e });
       }
-      return this;
-    },
-
-    /**
-     * @private
-     * @param {fabric.Group} group
-     */
-    _setActiveGroup: function(group) {
-      this._activeGroup = group;
-      if (group) {
-        group.set('active', true);
-      }
-    },
-
-    /**
-     * Sets active group to a specified one. If the function is called by fabric
-     * as a consequence of a mouse event, the event is passed as a parmater and
-     * sent to the fire function for the custom events. When used as a method the
-     * e param does not have any application.
-     * @param {fabric.Group} group Group to set as a current one
-     * @param {Event} e Event object
-     * @return {fabric.Canvas} thisArg
-     * @chainable
-     */
-    setActiveGroup: function (group, e) {
-      this._setActiveGroup(group);
-      if (group) {
-        this.fire('object:selected', { target: group, e: e });
-        group.fire('selected', { e: e });
-      }
-      return this;
-    },
-
-    /**
-     * Returns currently active group
-     * @return {fabric.Group} Current group
-     */
-    getActiveGroup: function () {
-      return this._activeGroup;
-    },
-
-    /**
-     * @private
-     */
-    _discardActiveGroup: function() {
-      var g = this.getActiveGroup();
-      if (g) {
-        g.destroy();
-      }
-      this.setActiveGroup(null);
-    },
-
-    /**
-     * Discards currently active group and fire events If the function is called by fabric
-     * as a consequence of a mouse event, the event is passed as a parmater and
-     * sent to the fire function for the custom events. When used as a method the
-     * e param does not have any application.
-     * @return {fabric.Canvas} thisArg
-     * @chainable
-     */
-    discardActiveGroup: function (e) {
-      var g = this.getActiveGroup();
-      if (g) {
-        this.fire('before:selection:cleared', { e: e, target: g });
-        this._discardActiveGroup();
-        this.fire('selection:cleared', { e: e });
-      }
-      return this;
-    },
-
-    /**
-     * Deactivates all objects on canvas, removing any active group or object
-     * @return {fabric.Canvas} thisArg
-     * @chainable
-     */
-    deactivateAll: function () {
-      var allObjects = this.getObjects(),
-          i = 0,
-          len = allObjects.length,
-          obj;
-      for ( ; i < len; i++) {
-        obj = allObjects[i];
-        obj && obj.set('active', false);
-      }
-      this._discardActiveGroup();
-      this._discardActiveObject();
-      return this;
-    },
-
-    /**
-     * Deactivates all objects and dispatches appropriate events If the function is called by fabric
-     * as a consequence of a mouse event, the event is passed as a parmater and
-     * sent to the fire function for the custom events. When used as a method the
-     * e param does not have any application.
-     * @return {fabric.Canvas} thisArg
-     * @chainable
-     */
-    deactivateAllWithDispatch: function (e) {
-      var allObjects = this.getObjects(),
-          i = 0,
-          len = allObjects.length,
-          obj;
-      for ( ; i < len; i++) {
-        obj = allObjects[i];
-        obj && obj.set('active', false);
-      }
-      this.discardActiveGroup(e);
-      this.discardActiveObject(e);
+      this._discardActiveObject(e);
+      this._fireSelectionEvents(currentActives, e);
       return this;
     },
 
@@ -1575,7 +1512,7 @@
      * @chainable
      */
     dispose: function () {
-      this.callSuper('dispose');
+      fabric.StaticCanvas.prototype.dispose.call(this);
       var wrapper = this.wrapperEl;
       this.removeListeners();
       wrapper.removeChild(this.upperCanvasEl);
@@ -1594,7 +1531,7 @@
      * @chainable
      */
     clear: function () {
-      this.discardActiveGroup();
+      // this.discardActiveGroup();
       this.discardActiveObject();
       this.clearContext(this.contextTop);
       return this.callSuper('clear');
@@ -1605,27 +1542,10 @@
      * @param {CanvasRenderingContext2D} ctx Context to render controls on
      */
     drawControls: function(ctx) {
-      var activeGroup = this.getActiveGroup();
+      var activeObject = this._activeObject;
 
-      if (activeGroup) {
-        activeGroup._renderControls(ctx);
-      }
-      else {
-        this._drawObjectsControls(ctx);
-      }
-    },
-
-    /**
-     * @private
-     */
-    _drawObjectsControls: function(ctx) {
-      var object;
-      for (var i = 0, len = this._objects.length; i < len; ++i) {
-        object = this._objects[i];
-        if (!object || !object.active) {
-          continue;
-        }
-        object._renderControls(ctx);
+      if (activeObject) {
+        activeObject._renderControls(ctx);
       }
     },
 
@@ -1651,14 +1571,14 @@
      * @returns the original values of instance which were changed
      */
     _realizeGroupTransformOnObject: function(instance) {
-      var layoutProps = ['angle', 'flipX', 'flipY', 'height', 'left', 'scaleX', 'scaleY', 'top', 'width'];
-      if (instance.group && instance.group === this.getActiveGroup()) {
+      if (instance.group && instance.group.type === 'activeSelection' && this._activeObject === instance.group) {
+        var layoutProps = ['angle', 'flipX', 'flipY', 'left', 'scaleX', 'scaleY', 'skewX', 'skewY', 'top'];
         //Copy all the positionally relevant properties across now
         var originalValues = {};
         layoutProps.forEach(function(prop) {
           originalValues[prop] = instance[prop];
         });
-        this.getActiveGroup().realizeTransform(instance);
+        this._activeObject.realizeTransform(instance);
         return originalValues;
       }
       else {
@@ -1682,10 +1602,9 @@
      * @private
      */
     _setSVGObject: function(markup, instance, reviver) {
-      var originalProperties;
       //If the object is in a selection group, simulate what would happen to that
       //object when the group is deselected
-      originalProperties = this._realizeGroupTransformOnObject(instance);
+      var originalProperties = this._realizeGroupTransformOnObject(instance);
       this.callSuper('_setSVGObject', markup, instance, reviver);
       this._unwindGroupTransformOnObject(instance, originalProperties);
     },
@@ -1703,13 +1622,4 @@
     /** @ignore */
     fabric.Canvas.prototype._setCursorFromEvent = function() { };
   }
-
-  /**
-   * @ignore
-   * @class fabric.Element
-   * @alias fabric.Canvas
-   * @deprecated Use {@link fabric.Canvas} instead.
-   * @constructor
-   */
-  fabric.Element = fabric.Canvas;
 })();

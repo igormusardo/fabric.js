@@ -7,74 +7,72 @@
       createClass = fabric.util.createClass;
 
   /**
-   * Brightness filter class
-   * @class fabric.Image.filters.Brightness
+   * MyFilter filter class
+   * @class fabric.Image.filters.MyFilter
    * @memberOf fabric.Image.filters
    * @extends fabric.Image.filters.BaseFilter
-   * @see {@link fabric.Image.filters.Brightness#initialize} for constructor definition
+   * @see {@link fabric.Image.filters.MyFilter#initialize} for constructor definition
    * @see {@link http://fabricjs.com/image-filters|ImageFilters demo}
    * @example
-   * var filter = new fabric.Image.filters.Brightness({
-   *   brightness: 200
+   * var filter = new fabric.Image.filters.MyFilter({
+   *   add here an example of how to use your filter
    * });
    * object.filters.push(filter);
    * object.applyFilters();
    */
-  filters.Brightness = createClass(filters.BaseFilter, /** @lends fabric.Image.filters.Brightness.prototype */ {
+  filters.MyFilter = createClass(filters.BaseFilter, /** @lends fabric.Image.filters.MyFilter.prototype */ {
 
     /**
      * Filter type
      * @param {String} type
      * @default
      */
-    type: 'Brightness',
+    type: 'MyFilter',
 
     /**
-     * Fragment source for the brightness program
+     * Fragment source for the myParameter program
      */
     fragmentSource: 'precision highp float;\n' +
       'uniform sampler2D uTexture;\n' +
-      'uniform float uBrightness;\n' +
+      'uniform float uMyParameter;\n' +
       'varying vec2 vTexCoord;\n' +
       'void main() {\n' +
         'vec4 color = texture2D(uTexture, vTexCoord);\n' +
-        'color.rgb += uBrightness;\n' +
+        // add your gl code here
         'gl_FragColor = color;\n' +
       '}',
 
     /**
-     * Brightness value, from -1 to 1.
+     * MyFilter value, from -1 to 1.
      * translated to -255 to 255 for 2d
      * 0.0039215686 is the part of 1 that get translated to 1 in 2d
-     * @param {Number} brightness
+     * @param {Number} myParameter
      * @default
      */
-    brightness: 0,
+    myParameter: 0,
 
     /**
      * Describe the property that is the filter parameter
      * @param {String} m
      * @default
      */
-    mainParameter: 'brightness',
+    mainParameter: 'myParameter',
 
     /**
-    * Apply the Brightness operation to a Uint8ClampedArray representing the pixels of an image.
+    * Apply the MyFilter operation to a Uint8ClampedArray representing the pixels of an image.
     *
     * @param {Object} options
     * @param {ImageData} options.imageData The Uint8ClampedArray to be filtered.
     */
     applyTo2d: function(options) {
-      if (this.brightness === 0) {
+      if (this.myParameter === 0) {
+        // early return if the parameter value has a neutral value
         return;
       }
       var imageData = options.imageData,
-          data = imageData.data, i, len = data.length,
-          brightness = Math.round(this.brightness * 255);
+          data = imageData.data, i, len = data.length;
       for (i = 0; i < len; i += 4) {
-        data[i] = data[i] + brightness;
-        data[i + 1] = data[i + 1] + brightness;
-        data[i + 2] = data[i + 2] + brightness;
+        // insert here your code to modify data[i]
       }
     },
 
@@ -86,7 +84,7 @@
      */
     getUniformLocations: function(gl, program) {
       return {
-        uBrightness: gl.getUniformLocation(program, 'uBrightness'),
+        uMyParameter: gl.getUniformLocation(program, 'uMyParameter'),
       };
     },
 
@@ -97,7 +95,7 @@
      * @param {Object} uniformLocations A map of string uniform names to WebGLUniformLocation objects
      */
     sendUniformData: function(gl, uniformLocations) {
-      gl.uniform1f(uniformLocations.uBrightness, this.brightness);
+      gl.uniform1f(uniformLocations.uMyParameter, this.myParameter);
     },
   });
 
@@ -106,8 +104,8 @@
    * @static
    * @param {Object} object Object to create an instance from
    * @param {function} [callback] to be invoked after filter creation
-   * @return {fabric.Image.filters.Brightness} Instance of fabric.Image.filters.Brightness
+   * @return {fabric.Image.filters.MyFilter} Instance of fabric.Image.filters.MyFilter
    */
-  fabric.Image.filters.Brightness.fromObject = fabric.Image.filters.BaseFilter.fromObject;
+  fabric.Image.filters.MyFilter.fromObject = fabric.Image.filters.BaseFilter.fromObject;
 
 })(typeof exports !== 'undefined' ? exports : this);

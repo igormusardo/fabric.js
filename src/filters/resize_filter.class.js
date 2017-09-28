@@ -96,7 +96,7 @@
     //   'varying vec2 twoStepsRightTextureCoordinate;\n' +
     //   'varying vec2 threeStepsRightTextureCoordinate;\n' +
     //   'varying vec2 fourStepsRightTextureCoordinate;\n' +
-    //   'uniform sampler2d uTexture;\n' +
+    //   'uniform sampler2D uTexture;\n' +
     //   'void main() {\n' +
     //     'vec4 color = texture2D(uTexture, centerTextureCoordinate) * 0.38026;\n' +
     //     'color += texture2D(uTexture, oneStepLeftTextureCoordinate) * 0.27667;\n' +
@@ -342,7 +342,7 @@
           ratioWHalf = ceil(ratioW / 2),
           ratioHHalf = ceil(ratioH / 2),
           img = options.imageData, data = img.data,
-          img2 = options.ctx.createimageData(dW, dH), data2 = img2.data;
+          img2 = options.ctx.createImageData(dW, dH), data2 = img2.data;
       for (var j = 0; j < dH; j++) {
         for (var i = 0; i < dW; i++) {
           var x2 = (i + j * dW) * 4, weight = 0, weights = 0, weightsAlpha = 0,

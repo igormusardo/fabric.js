@@ -12,6 +12,7 @@ testrunner.run({
     deps: "./test/fixtures/test_script.js",
     code: "./dist/fabric.js",
     tests: [
+      './test/unit/activeselection.js',
       './test/unit/animation.js',
       './test/unit/rect.js',
       './test/unit/ellipse.js',
@@ -38,6 +39,7 @@ testrunner.run({
       './test/unit/object_geometry.js',
       './test/unit/object_origin.js',
       './test/unit/itext.js',
+      './test/unit/itext_click_behaviour.js',
       './test/unit/itext_key_behaviour.js',
       './test/unit/collection.js',
       './test/unit/point.js',

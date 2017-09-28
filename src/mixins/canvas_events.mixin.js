@@ -294,7 +294,7 @@
      * @param {Object} pointer
      */
     _shouldRender: function(target, pointer) {
-      var activeObject = this.getActiveGroup() || this.getActiveObject();
+      var activeObject = this._activeObject;
 
       if (activeObject && activeObject.isEditing && target === activeObject) {
         // if we mouse up/down over a editing textbox a cursor change,
@@ -313,7 +313,7 @@
         (pointer &&
           this._previousPointer &&
           this.selection && (
-          pointer.x !== this._previousPointer.x ||
+            pointer.x !== this._previousPointer.x ||
           pointer.y !== this._previousPointer.y))
       );
     },
@@ -327,19 +327,21 @@
      */
     __onMouseUp: function (e) {
 
-      var target;
+      var target, searchTarget = true, transform = this._currentTransform,
+          groupSelector = this._groupSelector,
+          isClick = (!groupSelector || (groupSelector.left === 0 && groupSelector.top === 0));
       // if right/middle click just fire events and return
       // target undefined will make the _handleEvent search the target
       if (checkClick(e, RIGHT_CLICK)) {
         if (this.fireRightClick) {
-          this._handleEvent(e, 'up', target, RIGHT_CLICK);
+          this._handleEvent(e, 'up', target, RIGHT_CLICK, isClick);
         }
         return;
       }
 
       if (checkClick(e, MIDDLE_CLICK)) {
         if (this.fireMiddleClick) {
-          this._handleEvent(e, 'up', target, MIDDLE_CLICK);
+          this._handleEvent(e, 'up', target, MIDDLE_CLICK, isClick);
         }
         return;
       }
@@ -349,12 +351,8 @@
         return;
       }
 
-      var searchTarget = true, transform = this._currentTransform,
-          groupSelector = this._groupSelector,
-          isClick = (!groupSelector || (groupSelector.left === 0 && groupSelector.top === 0));
-
       if (transform) {
-        this._finalizeCurrentTransform();
+        this._finalizeCurrentTransform(e);
         searchTarget = !transform.actionPerformed;
       }
 
@@ -409,8 +407,9 @@
 
     /**
      * @private
+     * @param {Event} e send the mouse event that generate the finalize down, so it can be used in the event
      */
-    _finalizeCurrentTransform: function() {
+    _finalizeCurrentTransform: function(e) {
 
       var transform = this._currentTransform,
           target = transform.target;
@@ -423,8 +422,8 @@
       this._restoreOriginXY(target);
 
       if (transform.actionPerformed || (this.stateful && target.hasStateChanged())) {
-        this.fire('object:modified', { target: target });
-        target.fire('modified');
+        this.fire('object:modified', { target: target, e: e });
+        target.fire('modified', { e: e });
       }
     },
 
@@ -532,19 +531,18 @@
       // save pointer for check in __onMouseUp event
       var pointer = this.getPointer(e, true);
       this._previousPointer = pointer;
-
       var shouldRender = this._shouldRender(target, pointer),
           shouldGroup = this._shouldGroup(e, target);
-
       if (this._shouldClearSelection(e, target)) {
-        this.deactivateAllWithDispatch(e);
+        this.discardActiveObject(e);
       }
       else if (shouldGroup) {
         this._handleGrouping(e, target);
-        target = this.getActiveGroup();
+        target = this._activeObject;
       }
 
-      if (this.selection && (!target || (!target.selectable && !target.isEditing))) {
+      if (this.selection && (!target ||
+        (!target.selectable && !target.isEditing && target !== this._activeObject))) {
         this._groupSelector = {
           ex: pointer.x,
           ey: pointer.y,
@@ -554,17 +552,12 @@
       }
 
       if (target) {
-        if (target.selectable && (target.__corner || !shouldGroup)) {
+        if (target.selectable) {
+          this.setActiveObject(target, e);
+        }
+        if (target === this._activeObject && (target.__corner || !shouldGroup)) {
           this._beforeTransform(e, target);
           this._setupCurrentTransform(e, target);
-        }
-        var activeObject = this.getActiveObject();
-        if (target !== this.getActiveGroup() && target !== activeObject) {
-          this.deactivateAll();
-          if (target.selectable) {
-            activeObject && activeObject.fire('deselected', { e: e });
-            this.setActiveObject(target, e);
-          }
         }
       }
       this._handleEvent(e, 'down', target ? target : null);
@@ -660,11 +653,38 @@
       else if (!this._currentTransform) {
         target = this.findTarget(e);
         this._setCursorFromEvent(e, target);
+        this._fireOverOutEvents(target, e);
       }
       else {
         this._transformObject(e);
       }
       this._handleEvent(e, 'move', target ? target : null);
+    },
+
+    /**
+     * @private
+     */
+    _fireOverOutEvents: function(target, e) {
+      var overOpt, outOpt, hoveredTarget = this._hoveredTarget;
+      if (hoveredTarget !== target) {
+        overOpt = { e: e, target: target, previousTarget: this._hoveredTarget };
+        outOpt = { e: e, target: this._hoveredTarget, nextTarget: target };
+        this._hoveredTarget = target;
+      }
+      if (target) {
+        if (hoveredTarget !== target) {
+          if (hoveredTarget) {
+            this.fire('mouse:out', outOpt);
+            hoveredTarget.fire('mouseout', outOpt);
+          }
+          this.fire('mouse:over', overOpt);
+          target.fire('mouseover', overOpt);
+        }
+      }
+      else if (hoveredTarget) {
+        this.fire('mouse:out', outOpt);
+        hoveredTarget.fire('mouseout', outOpt);
+      }
     },
 
     /**
@@ -767,7 +787,7 @@
      * @return {Boolean} true if the scaling occurred
      */
     _onScale: function(e, transform, x, y) {
-      if ((e[this.uniScaleKey] || this.uniScaleTransform) && !transform.target.get('lockUniScaling')) {
+      if (this._isUniscalePossible(e, transform.target)) {
         transform.currentAction = 'scale';
         return this._scaleObject(x, y);
       }
@@ -783,6 +803,16 @@
     },
 
     /**
+     * @private
+     * @param {Event} e Event object
+     * @param {fabric.Object} target current target
+     * @return {Boolean} true if unproportional scaling is possible
+     */
+    _isUniscalePossible: function(e, target) {
+      return (e[this.uniScaleKey] || this.uniScaleTransform) && !target.get('lockUniScaling');
+    },
+
+    /**
      * Sets the cursor depending on where the canvas is being hovered.
      * Note: very buggy in Opera
      * @param {Event} e Event object
@@ -795,36 +825,51 @@
       }
 
       var hoverCursor = target.hoverCursor || this.hoverCursor,
-          activeGroup = this.getActiveGroup(),
+          activeSelection = this._activeObject && this._activeObject.type === 'activeSelection' ?
+            this._activeObject : null,
           // only show proper corner when group selection is not active
-          corner = target._findTargetCorner
-                    && (!activeGroup || !activeGroup.contains(target))
+          corner = (!activeSelection || !activeSelection.contains(target))
                     && target._findTargetCorner(this.getPointer(e, true));
 
       if (!corner) {
         this.setCursor(hoverCursor);
       }
       else {
-        this._setCornerCursor(corner, target, e);
+        this.setCursor(this.getCornerCursor(corner, target, e));
       }
-      //actually unclear why it should return something
-      //is never evaluated
-      return true;
     },
 
     /**
      * @private
      */
-    _setCornerCursor: function(corner, target, e) {
-      if (corner in cursorOffset) {
-        this.setCursor(this._getRotatedCornerCursor(corner, target, e));
+    getCornerCursor: function(corner, target, e) {
+      if (this.actionIsDisabled(corner, target, e)) {
+        return this.notAllowedCursor;
+      }
+      else if (corner in cursorOffset) {
+        return this._getRotatedCornerCursor(corner, target, e);
       }
       else if (corner === 'mtr' && target.hasRotatingPoint) {
-        this.setCursor(this.rotationCursor);
+        return this.rotationCursor;
       }
       else {
-        this.setCursor(this.defaultCursor);
-        return false;
+        return this.defaultCursor;
+      }
+    },
+
+    actionIsDisabled: function(corner, target, e) {
+      if (corner === 'mt' || corner === 'mb') {
+        return e[this.altActionKey] ? target.lockSkewingX : target.lockScalingY;
+      }
+      else if (corner === 'ml' || corner === 'mr') {
+        return e[this.altActionKey] ? target.lockSkewingY : target.lockScalingX;
+      }
+      else if (corner === 'mtr') {
+        return target.lockRotation;
+      }
+      else {
+        return this._isUniscalePossible(e, target) ?
+          target.lockScalingX && target.lockScalingY : target.lockScalingX || target.lockScalingY;
       }
     },
 
@@ -832,7 +877,7 @@
      * @private
      */
     _getRotatedCornerCursor: function(corner, target, e) {
-      var n = Math.round((target.getAngle() % 360) / 45);
+      var n = Math.round((target.angle % 360) / 45);
 
       if (n < 0) {
         n += 8; // full circle ahead
