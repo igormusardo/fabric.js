@@ -127,12 +127,13 @@
     selection:              true,
 
     /**
-     * Indicates which key enable multiple click selection
+     * Indicates which key or keys enable multiple click selection
+     * Pass value as a string or array of strings
      * values: 'altKey', 'shiftKey', 'ctrlKey'.
-     * If `null` or 'none' or any other string that is not a modifier key
-     * feature is disabled feature disabled.
+     * If `null` or empty or containing any other string that is not a modifier key
+     * feature is disabled.
      * @since 1.6.2
-     * @type String
+     * @type String|Array
      * @default
      */
     selectionKey:           'shiftKey',
@@ -483,8 +484,9 @@
       var ctx = this.contextCache,
           originalColor = target.selectionBackgroundColor;
 
-      target.hasBorders = target.transparentCorners = false;
       target.selectionBackgroundColor = '';
+
+      this.clearContext(ctx);
 
       ctx.save();
       ctx.transform.apply(ctx, this.viewportTransform);
@@ -494,6 +496,8 @@
       target === this._activeObject && target._renderControls(ctx, {
         hasBorders: false,
         transparentCorners: false
+      }, {
+        hasBorders: false,
       });
 
       target.selectionBackgroundColor = originalColor;
@@ -501,9 +505,25 @@
       var isTransparent = fabric.util.isTransparent(
         ctx, x, y, this.targetFindTolerance);
 
-      this.clearContext(ctx);
-
       return isTransparent;
+    },
+
+    /**
+     * takes an event and determins if selection key has been pressed
+     * @private
+     * @param {Event} e Event object
+     */
+    _isSelectionKeyPressed: function(e) {
+      var selectionKeyPressed = false;
+
+      if (Object.prototype.toString.call(this.selectionKey) === '[object Array]') {
+        selectionKeyPressed = !!this.selectionKey.find(function(key) { return e[key] === true; });
+      }
+      else {
+        selectionKeyPressed = e[this.selectionKey];
+      }
+
+      return selectionKeyPressed;
     },
 
     /**
@@ -514,6 +534,7 @@
     _shouldClearSelection: function (e, target) {
       var activeObjects = this.getActiveObjects(),
           activeObject = this._activeObject;
+
       return (
         !target
         ||
@@ -522,7 +543,7 @@
           activeObjects.length > 1 &&
           activeObjects.indexOf(target) === -1 &&
           activeObject !== target &&
-          !e[this.selectionKey])
+          !this._isSelectionKeyPressed(e))
         ||
         (target && !target.evented)
         ||
@@ -1421,15 +1442,20 @@
       if (oldObjects.length > 0 && objects.length > 0) {
         opt.selected = added;
         opt.deselected = removed;
+        // added for backward compatibility
+        opt.updated = added[0] || removed[0];
+        opt.target = this._activeObject;
         somethingChanged && this.fire('selection:updated', opt);
       }
       else if (objects.length > 0) {
+        // deprecated event
         if (objects.length === 1) {
           opt.target = added[0];
           this.fire('object:selected', opt);
         }
-        opt.target = undefined;
         opt.selected = added;
+        // added for backward compatibility
+        opt.target = this._activeObject;
         this.fire('selection:created', opt);
       }
       else if (oldObjects.length > 0) {
