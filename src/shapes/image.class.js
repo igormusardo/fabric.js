@@ -465,8 +465,9 @@
     _renderFill: function(ctx) {
       var x = -this.width / 2, y = -this.height / 2, elementToDraw;
       elementToDraw = this._element;
+      //Sander: we are using elementToDraw source width/height so that we sketch/fill up entire image object
       elementToDraw && ctx.drawImage(elementToDraw,
-        this.cropX, this.cropY, this.width, this.height,
+        this.cropX, this.cropY, elementToDraw.width, elementToDraw.height,
         x, y, this.width, this.height);
     },
 

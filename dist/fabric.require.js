@@ -302,7 +302,7 @@ fabric.CommonMethods = {
             return new fabric.Point(t[0] * p.x + t[2] * p.y + t[4], t[1] * p.x + t[3] * p.y + t[5]);
         },
         makeBoundingBoxFromPoints: function(points) {
-            var xPoints = [ points[0].x, points[1].x, points[2].x, points[3].x ], minX = fabric.util.array.min(xPoints), maxX = fabric.util.array.max(xPoints), width = Math.abs(minX - maxX), yPoints = [ points[0].y, points[1].y, points[2].y, points[3].y ], minY = fabric.util.array.min(yPoints), maxY = fabric.util.array.max(yPoints), height = Math.abs(minY - maxY);
+            var xPoints = [ points[0].x, points[1].x, points[2].x, points[3].x ], minX = fabric.util.array.min(xPoints), maxX = fabric.util.array.max(xPoints), width = maxX - minX, yPoints = [ points[0].y, points[1].y, points[2].y, points[3].y ], minY = fabric.util.array.min(yPoints), maxY = fabric.util.array.max(yPoints), height = maxY - minY;
             return {
                 left: minX,
                 top: minY,
@@ -390,10 +390,11 @@ fabric.CommonMethods = {
                 return;
             }
             var img = fabric.util.createImage();
-            img.onload = function() {
+            var onLoadCallback = function() {
                 callback && callback.call(context, img);
                 img = img.onload = img.onerror = null;
             };
+            img.onload = onLoadCallback;
             img.onerror = function() {
                 fabric.log("Error loading " + img.src);
                 callback && callback.call(context, null, true);
@@ -402,7 +403,24 @@ fabric.CommonMethods = {
             if (url.indexOf("data") !== 0 && crossOrigin) {
                 img.crossOrigin = crossOrigin;
             }
+            if (url.substring(0, 14) === "data:image/svg") {
+                img.onload = null;
+                fabric.util.loadImageInDom(img, onLoadCallback);
+            }
             img.src = url;
+        },
+        loadImageInDom: function(img, onLoadCallback) {
+            var div = fabric.document.createElement("div");
+            div.style.width = div.style.height = "1px";
+            div.style.left = div.style.top = "-100%";
+            div.style.position = "absolute";
+            div.appendChild(img);
+            fabric.document.querySelector("body").appendChild(div);
+            img.onload = function() {
+                onLoadCallback();
+                div.parentNode.removeChild(div);
+                div = null;
+            };
         },
         enlivenObjects: function(objects, callback, namespace, reviver) {
             objects = objects || [];
@@ -4646,8 +4664,8 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
         },
         isTargetTransparent: function(target, x, y) {
             var ctx = this.contextCache, originalColor = target.selectionBackgroundColor;
-            target.hasBorders = target.transparentCorners = false;
             target.selectionBackgroundColor = "";
+            this.clearContext(ctx);
             ctx.save();
             ctx.transform.apply(ctx, this.viewportTransform);
             target.render(ctx);
@@ -4655,15 +4673,27 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
             target === this._activeObject && target._renderControls(ctx, {
                 hasBorders: false,
                 transparentCorners: false
+            }, {
+                hasBorders: false
             });
             target.selectionBackgroundColor = originalColor;
             var isTransparent = fabric.util.isTransparent(ctx, x, y, this.targetFindTolerance);
-            this.clearContext(ctx);
             return isTransparent;
+        },
+        _isSelectionKeyPressed: function(e) {
+            var selectionKeyPressed = false;
+            if (Object.prototype.toString.call(this.selectionKey) === "[object Array]") {
+                selectionKeyPressed = !!this.selectionKey.find(function(key) {
+                    return e[key] === true;
+                });
+            } else {
+                selectionKeyPressed = e[this.selectionKey];
+            }
+            return selectionKeyPressed;
         },
         _shouldClearSelection: function(e, target) {
             var activeObjects = this.getActiveObjects(), activeObject = this._activeObject;
-            return !target || target && activeObject && activeObjects.length > 1 && activeObjects.indexOf(target) === -1 && activeObject !== target && !e[this.selectionKey] || target && !target.evented || target && !target.selectable && activeObject && activeObject !== target;
+            return !target || target && activeObject && activeObjects.length > 1 && activeObjects.indexOf(target) === -1 && activeObject !== target && !this._isSelectionKeyPressed(e) || target && !target.evented || target && !target.selectable && activeObject && activeObject !== target;
         },
         _shouldCenterTransform: function(target) {
             if (!target) {
@@ -5192,14 +5222,16 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
             if (oldObjects.length > 0 && objects.length > 0) {
                 opt.selected = added;
                 opt.deselected = removed;
+                opt.updated = added[0] || removed[0];
+                opt.target = this._activeObject;
                 somethingChanged && this.fire("selection:updated", opt);
             } else if (objects.length > 0) {
                 if (objects.length === 1) {
                     opt.target = added[0];
                     this.fire("object:selected", opt);
                 }
-                opt.target = undefined;
                 opt.selected = added;
+                opt.target = this._activeObject;
                 this.fire("selection:created", opt);
             } else if (oldObjects.length > 0) {
                 opt.deselected = removed;
@@ -5857,7 +5889,7 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
     fabric.util.object.extend(fabric.Canvas.prototype, {
         _shouldGroup: function(e, target) {
             var activeObject = this._activeObject;
-            return activeObject && e[this.selectionKey] && target && target.selectable && this.selection && (activeObject !== target || activeObject.type === "activeSelection");
+            return activeObject && this._isSelectionKeyPressed(e) && target && target.selectable && this.selection && (activeObject !== target || activeObject.type === "activeSelection");
         },
         _handleGrouping: function(e, target) {
             var activeObject = this._activeObject;
@@ -6228,8 +6260,8 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
         },
         _updateCacheCanvas: function() {
             if (this.noScaleCache && this.canvas && this.canvas._currentTransform) {
-                var action = this.canvas._currentTransform.action;
-                if (action.slice && action.slice(0, 5) === "scale") {
+                var target = this.canvas._currentTransform.target, action = this.canvas._currentTransform.action;
+                if (this === target && action.slice && action.slice(0, 5) === "scale") {
                     return false;
                 }
             }
@@ -6427,6 +6459,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
                 }
                 this.drawCacheOnCanvas(ctx);
             } else {
+                this._cacheCanvas = null;
                 this.dirty = false;
                 this.drawObject(ctx);
                 if (this.objectCaching && this.statefullCache) {
@@ -7039,12 +7072,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             }
             return xcount;
         },
-        getBoundingRectWidth: function() {
-            return this.getBoundingRect().width;
-        },
-        getBoundingRectHeight: function() {
-            return this.getBoundingRect().height;
-        },
         getBoundingRect: function(absolute, calculate) {
             var coords = this.getCoords(absolute, calculate);
             return fabric.util.makeBoundingBoxFromPoints(coords);
@@ -7072,16 +7099,16 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             this._set("scaleY", value);
             return this.setCoords();
         },
-        scaleToWidth: function(value) {
-            var boundingRectFactor = this.getBoundingRect().width / this.getScaledWidth();
+        scaleToWidth: function(value, absolute) {
+            var boundingRectFactor = this.getBoundingRect(absolute).width / this.getScaledWidth();
             return this.scale(value / this.width / boundingRectFactor);
         },
-        scaleToHeight: function(value) {
-            var boundingRectFactor = this.getBoundingRect().height / this.getScaledHeight();
+        scaleToHeight: function(value, absolute) {
+            var boundingRectFactor = this.getBoundingRect(absolute).height / this.getScaledHeight();
             return this.scale(value / this.height / boundingRectFactor);
         },
         calcCoords: function(absolute) {
-            var theta = degreesToRadians(this.angle), vpt = this.getViewportTransform(), dim = absolute ? this._getTransformedDimensions() : this._calculateCurrentDimensions(), currentWidth = dim.x, currentHeight = dim.y, sinTh = Math.sin(theta), cosTh = Math.cos(theta), _angle = currentWidth > 0 ? Math.atan(currentHeight / currentWidth) : 0, _hypotenuse = currentWidth / Math.cos(_angle) / 2, offsetX = Math.cos(_angle + theta) * _hypotenuse, offsetY = Math.sin(_angle + theta) * _hypotenuse, center = this.getCenterPoint(), coords = absolute ? center : fabric.util.transformPoint(center, vpt), tl = new fabric.Point(coords.x - offsetX, coords.y - offsetY), tr = new fabric.Point(tl.x + currentWidth * cosTh, tl.y + currentWidth * sinTh), bl = new fabric.Point(tl.x - currentHeight * sinTh, tl.y + currentHeight * cosTh), br = new fabric.Point(coords.x + offsetX, coords.y + offsetY);
+            var theta = degreesToRadians(this.angle), vpt = this.getViewportTransform(), dim = absolute ? this._getTransformedDimensions() : this._calculateCurrentDimensions(), currentWidth = dim.x, currentHeight = dim.y, sinTh = theta ? Math.sin(theta) : 0, cosTh = theta ? Math.cos(theta) : 1, _angle = currentWidth > 0 ? Math.atan(currentHeight / currentWidth) : 0, _hypotenuse = currentWidth / Math.cos(_angle) / 2, offsetX = Math.cos(_angle + theta) * _hypotenuse, offsetY = Math.sin(_angle + theta) * _hypotenuse, center = this.getCenterPoint(), coords = absolute ? center : fabric.util.transformPoint(center, vpt), tl = new fabric.Point(coords.x - offsetX, coords.y - offsetY), tr = new fabric.Point(tl.x + currentWidth * cosTh, tl.y + currentWidth * sinTh), bl = new fabric.Point(tl.x - currentHeight * sinTh, tl.y + currentHeight * cosTh), br = new fabric.Point(coords.x + offsetX, coords.y + offsetY);
             if (!absolute) {
                 var ml = new fabric.Point((tl.x + bl.x) / 2, (tl.y + bl.y) / 2), mt = new fabric.Point((tr.x + tl.x) / 2, (tr.y + tl.y) / 2), mr = new fabric.Point((br.x + tr.x) / 2, (br.y + tr.y) / 2), mb = new fabric.Point((br.x + bl.x) / 2, (br.y + bl.y) / 2), mtr = new fabric.Point(mt.x + sinTh * this.rotatingPointOffset, mt.y - cosTh * this.rotatingPointOffset);
             }
@@ -9380,7 +9407,7 @@ fabric.util.object.extend(fabric.Object.prototype, {
         _renderFill: function(ctx) {
             var x = -this.width / 2, y = -this.height / 2, elementToDraw;
             elementToDraw = this._element;
-            elementToDraw && ctx.drawImage(elementToDraw, this.cropX, this.cropY, this.width, this.height, x, y, this.width, this.height);
+            elementToDraw && ctx.drawImage(elementToDraw, this.cropX, this.cropY, elementToDraw.width, elementToDraw.height, x, y, this.width, this.height);
         },
         _needsResize: function() {
             return this.scaleX !== this._lastScaleX || this.scaleY !== this._lastScaleY;
@@ -11161,6 +11188,9 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
                 this.enlargeSpaces();
             }
             this.height = this.calcTextHeight();
+            this.saveState({
+                propertySet: "_dimensionAffectingProps"
+            });
         },
         enlargeSpaces: function() {
             var diffSpace, currentLineWidth, numberOfSpaces, accumulatedSpace, line, charBound, spaces;
@@ -11495,16 +11525,12 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
         _clearCache: function() {
             this.__lineWidths = [];
             this.__lineHeights = [];
-            this.__numberOfSpaces = [];
             this.__charBounds = [];
         },
         _shouldClearDimensionCache: function() {
             var shouldClear = this._forceClearCache;
             shouldClear || (shouldClear = this.hasStateChanged("_dimensionAffectingProps"));
             if (shouldClear) {
-                this.saveState({
-                    propertySet: "_dimensionAffectingProps"
-                });
                 this.dirty = true;
                 this._forceClearCache = false;
             }
@@ -11522,7 +11548,6 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
                 width = lineInfo.width;
             }
             this.__lineWidths[lineIndex] = width;
-            this.__numberOfSpaces[lineIndex] = lineInfo.numberOfSpaces;
             return width;
         },
         _getWidthOfCharSpacing: function() {
@@ -11610,12 +11635,21 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
             obj.styles = clone(this.styles, true);
             return obj;
         },
-        _set: function(key, value) {
-            this.callSuper("_set", key, value);
-            if (this._dimensionAffectingProps.indexOf(key) > -1) {
+        set: function(key, value) {
+            this.callSuper("set", key, value);
+            var needsDims = false;
+            if (typeof key === "object") {
+                for (var _key in key) {
+                    needsDims = needsDims || this._dimensionAffectingProps.indexOf(_key) !== -1;
+                }
+            } else {
+                needsDims = this._dimensionAffectingProps.indexOf(key) !== -1;
+            }
+            if (needsDims) {
                 this.initDimensions();
                 this.setCoords();
             }
+            return this;
         },
         complexity: function() {
             return 1;
@@ -13338,6 +13372,9 @@ fabric.util.object.extend(fabric.IText.prototype, {
                 this.enlargeSpaces();
             }
             this.height = this.calcTextHeight();
+            this.saveState({
+                propertySet: "_dimensionAffectingProps"
+            });
         },
         _generateStyleMap: function(textInfo) {
             var realLineCount = 0, realLineCharCount = 0, charCount = 0, map = {};
