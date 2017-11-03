@@ -266,9 +266,9 @@
         return;
       }
       if (this.canvas && this.canvas.contextTop) {
-        var ctx = this.canvas.contextTop, v = this.canvas.viewportTransform;
+        var ctx = this.canvas.contextTop;
         ctx.save();
-        ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+        ctx.transform.apply(ctx, this.canvas.viewportTransform);
         this.transform(ctx);
         this.transformMatrix && ctx.transform.apply(ctx, this.transformMatrix);
         this._clearTextArea(ctx);

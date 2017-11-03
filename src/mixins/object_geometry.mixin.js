@@ -43,16 +43,6 @@
     aCoords: null,
 
     /**
-     * storage for object transform matrix
-     */
-    ownMatrixCache: null,
-
-    /**
-     * storage for object full transform matrix
-     */
-    matrixCache: null,
-
-    /**
      * return correct set of coordinates for intersection
      */
     getCoords: function(absolute, calculate) {
@@ -447,15 +437,6 @@
       return fabric.iMatrix.concat();
     },
 
-    transformMatrixKey: function(skipGroup) {
-      var sep = '_', prefix = '';
-      if (!skipGroup && this.group) {
-        prefix = this.group.transformMatrixKey(skipGroup) + sep;
-      };
-      return prefix + this.top + sep + this.left + sep + this.scaleX + sep + this.scaleY +
-        sep + this.skewX + sep + this.skewY + sep + this.angle + sep + this.flipX + sep + this.flipY;
-    },
-
     /**
      * calculate trasform Matrix that represent current transformation from
      * object properties.
@@ -463,38 +444,22 @@
      * @return {Array} matrix Transform Matrix for the object
      */
     calcTransformMatrix: function(skipGroup) {
-      if (skipGroup) {
-        return this.calcOwnMatrix();
-      }
-      var key = this.transformMatrixKey(), cache = this.matrixCache || (this.matrixCache = {});
-      if (cache.key === key) {
-        return cache.value;
-      }
-      var matrix = this.calcOwnMatrix();
-      if (this.group) {
-        matrix = multiplyMatrices(this.group.calcTransformMatrix(), matrix);
-      }
-      cache.key = key;
-      cache.value = matrix;
-      return matrix;
-    },
-
-    calcOwnMatrix: function() {
-      var key = this.transformMatrixKey(true), cache = this.ownMatrixCache || (this.ownMatrixCache = {});
-      if (cache.key === key) {
-        return cache.value;
-      }
       var center = this.getCenterPoint(),
-          matrix = [1, 0, 0, 1, center.x, center.y],
+          translateMatrix = [1, 0, 0, 1, center.x, center.y],
           rotateMatrix,
-          dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true);
+          dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true),
+          matrix;
+      if (this.group && !skipGroup) {
+        matrix = multiplyMatrices(this.group.calcTransformMatrix(), translateMatrix);
+      }
+      else {
+        matrix = translateMatrix;
+      }
       if (this.angle) {
         rotateMatrix = this._calcRotateMatrix();
         matrix = multiplyMatrices(matrix, rotateMatrix);
       }
       matrix = multiplyMatrices(matrix, dimensionMatrix);
-      cache.key = key;
-      cache.value = matrix;
       return matrix;
     },
 
