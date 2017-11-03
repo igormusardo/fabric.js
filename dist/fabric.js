@@ -7621,7 +7621,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
      * @chainable
      */
     renderCanvas: function(ctx, objects) {
-      var v = this.viewportTransform;
       if (this.isRendering) {
         fabric.util.cancelAnimFrame(this.isRendering);
         this.isRendering = 0;
@@ -7636,7 +7635,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
 
       ctx.save();
       //apply viewport transform once for all rendering process
-      ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+      ctx.transform.apply(ctx, this.viewportTransform);
       this._renderObjects(ctx, objects);
       ctx.restore();
       if (!this.controlsAboveOverlay && this.interactive) {
@@ -7670,7 +7669,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
      * @param {string} property 'background' or 'overlay'
      */
     _renderBackgroundOrOverlay: function(ctx, property) {
-      var object = this[property + 'Color'], v;
+      var object = this[property + 'Color'];
       if (object) {
         ctx.fillStyle = object.toLive
           ? object.toLive(ctx, this)
@@ -7685,9 +7684,8 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
       object = this[property + 'Image'];
       if (object) {
         if (this[property + 'Vpt']) {
-          v = this.viewportTransform;
           ctx.save();
-          ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+          ctx.transform.apply(ctx, this.viewportTransform);
         }
         object.render(ctx);
         this[property + 'Vpt'] && ctx.restore();
@@ -9724,14 +9722,14 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, /** @lends fab
      */
     isTargetTransparent: function (target, x, y) {
       var ctx = this.contextCache,
-          originalColor = target.selectionBackgroundColor, v = this.viewportTransform;
+          originalColor = target.selectionBackgroundColor;
 
       target.selectionBackgroundColor = '';
 
       this.clearContext(ctx);
 
       ctx.save();
-      ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+      ctx.transform.apply(ctx, this.viewportTransform);
       target.render(ctx);
       ctx.restore();
 
@@ -13046,16 +13044,21 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
     /**
      * Transforms context when rendering an object
      * @param {CanvasRenderingContext2D} ctx Context
+     * @param {Boolean} fromLeft When true, context is transformed to object's top/left corner. This is used when rendering text on Node
      */
-    transform: function(ctx) {
-      var m;
+    transform: function(ctx, fromLeft) {
       if (this.group && !this.group._transformDone) {
-        m = this.calcTransformMatrix();
+        this.group.transform(ctx);
       }
-      else {
-        m = this.calcOwnMatrix();
-      }
-      ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+      var center = fromLeft ? this._getLeftTopCoords() : this.getCenterPoint();
+      ctx.translate(center.x, center.y);
+      this.angle && ctx.rotate(degreesToRadians(this.angle));
+      ctx.scale(
+        this.scaleX * (this.flipX ? -1 : 1),
+        this.scaleY * (this.flipY ? -1 : 1)
+      );
+      this.skewX && ctx.transform(1, 0, Math.tan(degreesToRadians(this.skewX)), 1, 0, 0);
+      this.skewY && ctx.transform(1, Math.tan(degreesToRadians(this.skewY)), 0, 1, 0, 0);
     },
 
     /**
@@ -13542,12 +13545,12 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
       if (!filler || !filler.toLive) {
         return { offsetX: 0, offsetY: 0 };
       }
-      var t = filler.gradientTransform || filler.patternTransform;
+      var transform = filler.gradientTransform || filler.patternTransform;
       var offsetX = -this.width / 2 + filler.offsetX || 0,
           offsetY = -this.height / 2 + filler.offsetY || 0;
       ctx.translate(offsetX, offsetY);
-      if (t) {
-        ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+      if (transform) {
+        ctx.transform.apply(ctx, transform);
       }
       return { offsetX: offsetX, offsetY: offsetY };
     },
@@ -14362,16 +14365,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
     aCoords: null,
 
     /**
-     * storage for object transform matrix
-     */
-    ownMatrixCache: null,
-
-    /**
-     * storage for object full transform matrix
-     */
-    matrixCache: null,
-
-    /**
      * return correct set of coordinates for intersection
      */
     getCoords: function(absolute, calculate) {
@@ -14766,15 +14759,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
       return fabric.iMatrix.concat();
     },
 
-    transformMatrixKey: function(skipGroup) {
-      var sep = '_', prefix = '';
-      if (!skipGroup && this.group) {
-        prefix = this.group.transformMatrixKey(skipGroup) + sep;
-      };
-      return prefix + this.top + sep + this.left + sep + this.scaleX + sep + this.scaleY +
-        sep + this.skewX + sep + this.skewY + sep + this.angle + sep + this.flipX + sep + this.flipY;
-    },
-
     /**
      * calculate trasform Matrix that represent current transformation from
      * object properties.
@@ -14782,38 +14766,22 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, /** @lends fabric.Stati
      * @return {Array} matrix Transform Matrix for the object
      */
     calcTransformMatrix: function(skipGroup) {
-      if (skipGroup) {
-        return this.calcOwnMatrix();
-      }
-      var key = this.transformMatrixKey(), cache = this.matrixCache || (this.matrixCache = {});
-      if (cache.key === key) {
-        return cache.value;
-      }
-      var matrix = this.calcOwnMatrix();
-      if (this.group) {
-        matrix = multiplyMatrices(this.group.calcTransformMatrix(), matrix);
-      }
-      cache.key = key;
-      cache.value = matrix;
-      return matrix;
-    },
-
-    calcOwnMatrix: function() {
-      var key = this.transformMatrixKey(true), cache = this.ownMatrixCache || (this.ownMatrixCache = {});
-      if (cache.key === key) {
-        return cache.value;
-      }
       var center = this.getCenterPoint(),
-          matrix = [1, 0, 0, 1, center.x, center.y],
+          translateMatrix = [1, 0, 0, 1, center.x, center.y],
           rotateMatrix,
-          dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true);
+          dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true),
+          matrix;
+      if (this.group && !skipGroup) {
+        matrix = multiplyMatrices(this.group.calcTransformMatrix(), translateMatrix);
+      }
+      else {
+        matrix = translateMatrix;
+      }
       if (this.angle) {
         rotateMatrix = this._calcRotateMatrix();
         matrix = multiplyMatrices(matrix, rotateMatrix);
       }
       matrix = multiplyMatrices(matrix, dimensionMatrix);
-      cache.key = key;
-      cache.value = matrix;
       return matrix;
     },
 
@@ -25653,9 +25621,9 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
         return;
       }
       if (this.canvas && this.canvas.contextTop) {
-        var ctx = this.canvas.contextTop, v = this.canvas.viewportTransform;
+        var ctx = this.canvas.contextTop;
         ctx.save();
-        ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+        ctx.transform.apply(ctx, this.canvas.viewportTransform);
         this.transform(ctx);
         this.transformMatrix && ctx.transform.apply(ctx, this.transformMatrix);
         this._clearTextArea(ctx);

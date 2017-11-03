@@ -3729,7 +3729,6 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
             return points;
         },
         renderCanvas: function(ctx, objects) {
-            var v = this.viewportTransform;
             if (this.isRendering) {
                 fabric.util.cancelAnimFrame(this.isRendering);
                 this.isRendering = 0;
@@ -3742,7 +3741,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
             }
             this._renderBackground(ctx);
             ctx.save();
-            ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+            ctx.transform.apply(ctx, this.viewportTransform);
             this._renderObjects(ctx, objects);
             ctx.restore();
             if (!this.controlsAboveOverlay && this.interactive) {
@@ -3764,7 +3763,7 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
             }
         },
         _renderBackgroundOrOverlay: function(ctx, property) {
-            var object = this[property + "Color"], v;
+            var object = this[property + "Color"];
             if (object) {
                 ctx.fillStyle = object.toLive ? object.toLive(ctx, this) : object;
                 ctx.fillRect(object.offsetX || 0, object.offsetY || 0, this.width, this.height);
@@ -3772,9 +3771,8 @@ fabric.ElementsParser.prototype.checkIfDone = function() {
             object = this[property + "Image"];
             if (object) {
                 if (this[property + "Vpt"]) {
-                    v = this.viewportTransform;
                     ctx.save();
-                    ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+                    ctx.transform.apply(ctx, this.viewportTransform);
                 }
                 object.render(ctx);
                 this[property + "Vpt"] && ctx.restore();
@@ -4681,11 +4679,11 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
             return fabric.util.transformPoint(vptPointer, invertedM);
         },
         isTargetTransparent: function(target, x, y) {
-            var ctx = this.contextCache, originalColor = target.selectionBackgroundColor, v = this.viewportTransform;
+            var ctx = this.contextCache, originalColor = target.selectionBackgroundColor;
             target.selectionBackgroundColor = "";
             this.clearContext(ctx);
             ctx.save();
-            ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+            ctx.transform.apply(ctx, this.viewportTransform);
             target.render(ctx);
             ctx.restore();
             target === this._activeObject && target._renderControls(ctx, {
@@ -6320,14 +6318,16 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             this._initPattern(options.fill, "fill");
             this._initPattern(options.stroke, "stroke");
         },
-        transform: function(ctx) {
-            var m;
+        transform: function(ctx, fromLeft) {
             if (this.group && !this.group._transformDone) {
-                m = this.calcTransformMatrix();
-            } else {
-                m = this.calcOwnMatrix();
+                this.group.transform(ctx);
             }
-            ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+            var center = fromLeft ? this._getLeftTopCoords() : this.getCenterPoint();
+            ctx.translate(center.x, center.y);
+            this.angle && ctx.rotate(degreesToRadians(this.angle));
+            ctx.scale(this.scaleX * (this.flipX ? -1 : 1), this.scaleY * (this.flipY ? -1 : 1));
+            this.skewX && ctx.transform(1, 0, Math.tan(degreesToRadians(this.skewX)), 1, 0, 0);
+            this.skewY && ctx.transform(1, Math.tan(degreesToRadians(this.skewY)), 0, 1, 0, 0);
         },
         toObject: function(propertiesToInclude) {
             var NUM_FRACTION_DIGITS = fabric.Object.NUM_FRACTION_DIGITS, object = {
@@ -6622,11 +6622,11 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
                     offsetY: 0
                 };
             }
-            var t = filler.gradientTransform || filler.patternTransform;
+            var transform = filler.gradientTransform || filler.patternTransform;
             var offsetX = -this.width / 2 + filler.offsetX || 0, offsetY = -this.height / 2 + filler.offsetY || 0;
             ctx.translate(offsetX, offsetY);
-            if (t) {
-                ctx.transform(t[0], t[1], t[2], t[3], t[4], t[5]);
+            if (transform) {
+                ctx.transform.apply(ctx, transform);
             }
             return {
                 offsetX: offsetX,
@@ -6984,8 +6984,6 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
     fabric.util.object.extend(fabric.Object.prototype, {
         oCoords: null,
         aCoords: null,
-        ownMatrixCache: null,
-        matrixCache: null,
         getCoords: function(absolute, calculate) {
             if (!this.oCoords) {
                 this.setCoords();
@@ -7163,42 +7161,18 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
             }
             return fabric.iMatrix.concat();
         },
-        transformMatrixKey: function(skipGroup) {
-            var sep = "_", prefix = "";
-            if (!skipGroup && this.group) {
-                prefix = this.group.transformMatrixKey(skipGroup) + sep;
-            }
-            return prefix + this.top + sep + this.left + sep + this.scaleX + sep + this.scaleY + sep + this.skewX + sep + this.skewY + sep + this.angle + sep + this.flipX + sep + this.flipY;
-        },
         calcTransformMatrix: function(skipGroup) {
-            if (skipGroup) {
-                return this.calcOwnMatrix();
+            var center = this.getCenterPoint(), translateMatrix = [ 1, 0, 0, 1, center.x, center.y ], rotateMatrix, dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true), matrix;
+            if (this.group && !skipGroup) {
+                matrix = multiplyMatrices(this.group.calcTransformMatrix(), translateMatrix);
+            } else {
+                matrix = translateMatrix;
             }
-            var key = this.transformMatrixKey(), cache = this.matrixCache || (this.matrixCache = {});
-            if (cache.key === key) {
-                return cache.value;
-            }
-            var matrix = this.calcOwnMatrix();
-            if (this.group) {
-                matrix = multiplyMatrices(this.group.calcTransformMatrix(), matrix);
-            }
-            cache.key = key;
-            cache.value = matrix;
-            return matrix;
-        },
-        calcOwnMatrix: function() {
-            var key = this.transformMatrixKey(true), cache = this.ownMatrixCache || (this.ownMatrixCache = {});
-            if (cache.key === key) {
-                return cache.value;
-            }
-            var center = this.getCenterPoint(), matrix = [ 1, 0, 0, 1, center.x, center.y ], rotateMatrix, dimensionMatrix = this._calcDimensionsTransformMatrix(this.skewX, this.skewY, true);
             if (this.angle) {
                 rotateMatrix = this._calcRotateMatrix();
                 matrix = multiplyMatrices(matrix, rotateMatrix);
             }
             matrix = multiplyMatrices(matrix, dimensionMatrix);
-            cache.key = key;
-            cache.value = matrix;
             return matrix;
         },
         _calcDimensionsTransformMatrix: function(skewX, skewY, flipping) {
@@ -12043,9 +12017,9 @@ fabric.Image.filters.BaseFilter.fromObject = function(object, callback) {
                 return;
             }
             if (this.canvas && this.canvas.contextTop) {
-                var ctx = this.canvas.contextTop, v = this.canvas.viewportTransform;
+                var ctx = this.canvas.contextTop;
                 ctx.save();
-                ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+                ctx.transform.apply(ctx, this.canvas.viewportTransform);
                 this.transform(ctx);
                 this.transformMatrix && ctx.transform.apply(ctx, this.transformMatrix);
                 this._clearTextArea(ctx);
